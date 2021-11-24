@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server",
-    "build": "cd client/ && npm install --only=dev && npm install && npm run build",
+    "build": "cd client/ && yarn build",
     "test": "cd ./server && node index.js 5500"
   },
   "repository": {
@@ -19,11 +19,6 @@
   },
   "homepage": "https://github.com/Sirrine-Jonathan/generals-bots#readme",
   "dependencies": {
-    "eslint": "^8.3.0",
-    "eslint-config-airbnb": "^19.0.1",
-    "eslint-plugin-import": "^2.25.3",
-    "eslint-plugin-react": "^7.27.1",
-    "eslint-plugin-react-hooks": "^4.3.0",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
     "eslint-plugin-jsx-a11y": "^6.5.1"

@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "yarn build & yarn watch",
-    "build": "cd ./client && yarn build",
-    "watch": "cd ./server && yarn start"
+    "start": "node server",
+    "build": "cd client/ && yarn build",
+    "test": "cd ./server && node index.js 5500"
   },
   "repository": {
     "type": "git",
@@ -18,6 +18,13 @@
     "url": "https://github.com/Sirrine-Jonathan/generals-bots/issues"
   },
   "homepage": "https://github.com/Sirrine-Jonathan/generals-bots#readme",
+  "dependencies": {
+    "eslint": "^8.3.0",
+    "eslint-config-airbnb": "^19.0.1",
+    "eslint-plugin-import": "^2.25.3",
+    "eslint-plugin-react": "^7.27.1",
+    "eslint-plugin-react-hooks": "^4.3.0"
+  },
   "devDependencies": {
     "concurrently": "^6.4.0"
   }

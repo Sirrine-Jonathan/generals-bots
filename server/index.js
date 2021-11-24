@@ -2,7 +2,7 @@ const express = require("express");
 const { spawn, exec } = require("child_process");
 const { readdirSync, readFileSync, statSync } = require('fs');
 const path = require('path');
-const PORT = process.env.PORT || 3001;
+const PORT = (process.argv.length >= 3 && process.argv[2]) || process.env.PORT || 3001;
 const app = express();
 
 app.use(express.static(path.resolve(__dirname, '../client/build')));
@@ -55,5 +55,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 })

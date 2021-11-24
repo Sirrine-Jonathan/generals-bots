@@ -1,8 +1,12 @@
 const express = require("express");
 const { spawn, exec } = require("child_process");
-const { readdirSync, readFileSync, statSync } = require('fs')
+const { readdirSync, readFileSync, statSync } = require('fs');
+const path = require('path');
 const PORT = process.env.PORT || 3001;
 const app = express();
+
+app.use(express.static(path.resolve(__dirname, '../client/build')));
+
 app.get('/init', (req, res) => {
   const bots = readdirSync(__dirname + '/bots', { withFileTypes: true })
     .filter(dirent => dirent.isDirectory())
@@ -24,6 +28,7 @@ app.get('/init', (req, res) => {
   })
   res.json(payload);
 })
+
 app.get('/quickplay/:bot_id', (req, res) => {
   spawn(`cd ./bots/${req.params.bot_id} && npm run start custom`, {
     stdio: 'inherit',
@@ -34,6 +39,7 @@ app.get('/quickplay/:bot_id', (req, res) => {
     url: `http://bot.generals.io/games/${encodeURIComponent(customGameId)}`
   });
 })
+
 app.get('/invite/:bot_id/:game_id', (req, res) => {
   spawn(`cd ./bots/${req.params.bot_id} && npm run start custom ${req.params.game_id}`, {
     stdio: 'inherit',
@@ -43,6 +49,11 @@ app.get('/invite/:bot_id/:game_id', (req, res) => {
     url: `http://bot.generals.io/games/${encodeURIComponent(req.params.game_id)}`
   });
 })
+
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../client/build', 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
 })

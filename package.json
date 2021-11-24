@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npm run buld & npm run watch",
+    "start": "npm run build & npm run watch",
     "build": "cd ./client && npm run build",
     "watch": "cd ./server && npm run start"
   },

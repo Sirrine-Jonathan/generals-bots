@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npm run build & npm run watch",
-    "build": "cd ./client && npm run build",
-    "watch": "cd ./server && npm run start"
+    "start": "yarn build & yarn watch",
+    "build": "cd ./client && yarn build",
+    "watch": "cd ./server && yarn start"
   },
   "repository": {
     "type": "git",

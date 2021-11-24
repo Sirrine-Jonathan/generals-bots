@@ -2,4 +2,4 @@
 
 # Generals Bots
 
-## Add your bot to the `/bots` directory
+### Add your bot to the `/bots` directory

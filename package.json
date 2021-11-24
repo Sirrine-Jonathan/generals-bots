@@ -1,0 +1,19 @@
+{
+  "name": "generals-bots",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": ""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sirrine-Jonathan/generals-bots.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sirrine-Jonathan/generals-bots/issues"
+  },
+  "homepage": "https://github.com/Sirrine-Jonathan/generals-bots#readme"
+}

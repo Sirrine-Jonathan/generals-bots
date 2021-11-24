@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Input, Button, Icon, Divider } from 'semantic-ui-react';
+import { Card, Input, Button, Icon, Divider, Image } from 'semantic-ui-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import styled from 'styled-components';
@@ -23,7 +23,10 @@ const BotCard = ({bot}) => {
   return (
     <Card key={bot.username}>
       <Card.Content>
-        <Card.Header>{bot.username}</Card.Header>
+        <Card.Header style={{display: 'flex', 'justify-content': 'space-between'}}>
+          {bot.username}
+          <Image src="/robot.png" style={{width: "33px", 'margin-top': "-8px"}} />
+        </Card.Header>
         <Card.Meta>Updated {( new Date(bot.last_updated)).toLocaleString()}</Card.Meta>
         <Divider />
         <Row>
@@ -33,7 +36,7 @@ const BotCard = ({bot}) => {
           </StyledButton>
         </Row>
         <Row>
-          <Input type="text" value={gameID} placeholder="Game ID" onChange={(e) => {setGameID(e.target.value)}}/>
+          <StyledInput type="text" value={gameID} placeholder="Game ID" onChange={(e) => {setGameID(e.target.value)}}/>
           <Button secondary onClick={() => invite(bot.dir)}>Invite</Button>
         </Row>
       </Card.Content>
@@ -58,6 +61,13 @@ const Row = styled.div`
   display: flex;
   justify-content: center;
   padding-top: 5px;
+  box-sizing: border-box;
+  flex: 1;
+  width: 100%;
+`;
+
+const StyledInput = styled(Input)`
+  margin-right: 4px;
 `;
 
 const StyledButton = styled(Button)`

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Container, Header, Divider, Icon } from 'semantic-ui-react'
+import { useEffect, useState } from 'react';
+import styled from 'styled-components';
+import { Container, Header, Divider, Icon, Image } from 'semantic-ui-react';
 import Mosaic from '../components/Mosiac';
 import PageHeader from '../components/PageHeader';
 import PageContainer from '../components/PageContainer';
@@ -29,7 +30,9 @@ const HomePage = () => {
   return (
     <PageContainer>
       <PageHeader>
-          <h1>Generals Bots</h1>
+          <Row>
+            <h1>Generals Bots</h1>
+          </Row>
           <a href="https://github.com/Sirrine-Jonathan/generals-bots.git" target="_blank" rel="noreferrer">
             <Icon name="github" style={{color: "#fff"}} size="huge" />
           </a>
@@ -49,3 +52,8 @@ const HomePage = () => {
   )
 }
 export default HomePage;
+
+const Row = styled.div`
+  display: flex;
+  align-items: center;
+`;

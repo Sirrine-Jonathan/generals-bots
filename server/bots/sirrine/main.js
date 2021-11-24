@@ -6,6 +6,11 @@ require("dotenv").config();
 
 const base = "https://bot.generals.io";
 const socket = io(base);
+const path = require('path');
+
+function basename(pathName) {
+  return path.basename(path.resolve(pathName));
+}
 
 socket.on("disconnect", () => {
   console.error("Disconnected from server.");
@@ -16,14 +21,20 @@ socket.on("connect", () => {
   console.log("Connected to server");
   const userId = process.env.BOT_USER_ID;
   const username = process.env.BOT_USER_NAME;
-  const customGameId = process.env.CUSTOM_GAME_ID;
 
-  if (process.env.FIRST_PLAY === "TRUE") {
-    socket.emit("set_username", userId, username);
+  // run this the first time
+  //socket.emit("set_username", userId, username);
+
+  let gameType = 'CUSTOM';
+  if (process.argv.length >= 3){
+    gameType = process.argv[2];
   }
-
-  switch (process.env.GAME_TYPE) {
+  switch (gameType.toUpperCase()) {
     case "CUSTOM":
+      let customGameId = basename('.') + '_quickplay'
+      if (process.argv.length > 3){
+        customGameId = process.argv[3];
+      }
       socket.emit("join_private", customGameId, userId);
       socket.emit("set_force_start", customGameId, true);
       console.log(`Joined custom game at http://bot.generals.io/games/${encodeURIComponent(customGameId)}`);

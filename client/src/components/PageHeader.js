@@ -11,7 +11,9 @@ const PageHeader = ({children, ...props}) => {
 export default PageHeader;
 
 const StyledPageHeader = styled.div`
-  background: #533535;
+  display: flex;
+  justify-content: space-between;
+  background: #2a2a3a;
   padding: 20px;
   & h1 {
     color: white;

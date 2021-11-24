@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Card, Input, Button, Icon, Divider } from 'semantic-ui-react';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import styled from 'styled-components';
 const BotCard = ({bot}) => {
   const [gameID, setGameID] = useState("");
@@ -14,7 +16,8 @@ const BotCard = ({bot}) => {
     fetch(`/invite/${dir}/${gameID}`)
       .then((res) => res.json())
       .then((data) => {
-        window.open(data.url, '_blank');
+        toast(`Playing on ${data.url}`);
+        //window.open(data.url, '_blank');
       })
   }
   return (
@@ -34,6 +37,17 @@ const BotCard = ({bot}) => {
           <Button secondary onClick={() => invite(bot.dir)}>Invite</Button>
         </Row>
       </Card.Content>
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar
+        newestOnTop={false}
+        closeOnClick={false}
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </Card>
   )
 }

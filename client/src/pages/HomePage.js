@@ -30,7 +30,9 @@ const HomePage = () => {
     <PageContainer>
       <PageHeader>
           <h1>Generals Bots</h1>
-          <Icon name="github" color="blue" size="huge" link={true} href="" />
+          <a href="https://github.com/Sirrine-Jonathan/generals-bots.git" target="_blank" rel="noreferrer">
+            <Icon name="github" style={{color: "#fff"}} size="huge" />
+          </a>
       </PageHeader>
       <Container>
         <Header as="h2" style={{"paddingTop": "20px"}}>

@@ -1,0 +1,14 @@
+{
+  "env": {
+    "es6": true
+  },
+  "extends": [
+    "airbnb"
+  ],
+  "rules": {
+    "no-console": "off",
+    "no-plusplus": "off",
+    "semi": ["error", "always"],
+    "quotes": ["error", "double"]
+  }
+}

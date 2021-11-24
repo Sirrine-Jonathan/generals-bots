@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": ""
+    "start": "npm run buld & npm run watch",
+    "build": "cd ./client && npm run build",
+    "watch": "cd ./server && npm run start"
   },
   "repository": {
     "type": "git",
@@ -15,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/Sirrine-Jonathan/generals-bots/issues"
   },
-  "homepage": "https://github.com/Sirrine-Jonathan/generals-bots#readme"
+  "homepage": "https://github.com/Sirrine-Jonathan/generals-bots#readme",
+  "devDependencies": {
+    "concurrently": "^6.4.0"
+  }
 }

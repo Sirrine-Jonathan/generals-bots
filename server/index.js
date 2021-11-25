@@ -37,7 +37,7 @@ app.get('/quickplay/:bot_id', (req, res) => {
 })
 
 app.get('/invite/:bot_id/:game_id', (req, res) => {
-  spawn(`cd ./bots/${req.params.bot_id} && npm run start custom ${req.params.game_id}`, {
+  spawn(`cd ./server/bots/${req.params.bot_id} && npm run start custom ${req.params.game_id}`, {
     stdio: 'inherit',
     shell: true
   });

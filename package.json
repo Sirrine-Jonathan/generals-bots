@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node server",
+    "watch": "nodemon server",
     "build": "cd client/ && yarn install && yarn build",
+    "quick-build": "cd client && yarn build",
     "test": "cd ./server && node index.js 5500"
   },
   "repository": {

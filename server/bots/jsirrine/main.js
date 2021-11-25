@@ -2,7 +2,8 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-plusplus */
 const io = require("socket.io-client");
-require("dotenv").config();
+const { readFileSync } = require('fs');
+//require("dotenv").config();
 
 const base = "https://bot.generals.io";
 const socket = io(base);
@@ -19,11 +20,11 @@ socket.on("disconnect", () => {
 
 socket.on("connect", () => {
   console.log("Connected to server");
-  const userId = process.env.BOT_USER_ID;
-  const username = process.env.BOT_USER_NAME;
-
-  // run this the first time
-  //socket.emit("set_username", userId, username);
+  let raw_data = readFileSync(__dirname + '/bot.json', { encoding: 'utf8' })
+  let data = JSON.parse(raw_data);
+  console.log(data);
+  const userId = data.BOT_ID;
+  const username = data.BOT_USER_NAME;
 
   let gameType = 'CUSTOM';
   if (process.argv.length >= 3){

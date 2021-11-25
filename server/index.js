@@ -1,5 +1,5 @@
 const express = require("express");
-const { spawn, exec } = require("child_process");
+const { spawn } = require("child_process");
 const { readdirSync, readFileSync, statSync } = require('fs');
 const path = require('path');
 const PORT = (process.argv.length >= 3 && process.argv[2]) || process.env.PORT || 3001;
@@ -12,25 +12,21 @@ app.get('/init', (req, res) => {
     .filter(dirent => dirent.isDirectory())
     .map(dirent => dirent.name );
   const payload = bots.map(bot => {
-    let raw_data = readFileSync(__dirname + '/bots/' + bot + '/.env', { encoding: 'utf8' })
-    let bot_data = raw_data
-      .split('\n')
-      .filter(line => {
-        let pair = line.split('=');
-        return pair[0] === 'BOT_USER_NAME'
-      })
-      .map(line => {
-        let pair = line.split('=');
-        return pair[1]
-      })
+    let raw_data = readFileSync(__dirname + '/bots/' + bot + '/bot.json', { encoding: 'utf8' })
+    let data = JSON.parse(raw_data);
     let stats = statSync(__dirname + '/bots');
-    return { username: bot_data[0], dir: bot, last_updated: stats.mtime };
+    return {
+      username: data.BOT_USER_NAME,
+      dir: bot,
+      last_updated: stats.mtime,
+      version: data.BOT_VERSION
+    };
   })
   res.json(payload);
 })
 
 app.get('/quickplay/:bot_id', (req, res) => {
-  spawn(`cd ./bots/${req.params.bot_id} && npm run start custom`, {
+  spawn(`cd ./server/bots/${req.params.bot_id} && yarn install && yarn start custom`, {
     stdio: 'inherit',
     shell: true
   });

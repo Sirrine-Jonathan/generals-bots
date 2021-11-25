@@ -11,5 +11,5 @@ const Mosaic = ({children}) => {
 export default Mosaic;
 
 const StyledMosaic = styled.div`
-
+  padding-top: 30px;
 `;

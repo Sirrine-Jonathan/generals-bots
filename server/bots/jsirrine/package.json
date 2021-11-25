@@ -20,6 +20,7 @@
   "scripts": {
     "start": "node main.js",
     "test": "node index.js",
+    "name": "node init.js",
     "lint": "eslint main.js",
     "lint:fix": "eslint main.js --fix"
   },

@@ -38,10 +38,6 @@ const HomePage = () => {
           </a>
       </PageHeader>
       <Container>
-        <Header as="h2" style={{"paddingTop": "20px"}}>
-          Explore Bots
-        </Header>
-        <Divider />
         {(listLoading) ? <Loading />:(
           <Mosaic>
             {getBotCards()}

@@ -5,6 +5,21 @@ const TILE_EMPTY = -1;
 const TILE_MOUNTAIN = -2;
 const TILE_FOG = -3;
 const TILE_FOG_OBSTACLE = -4; // Cities and Mountains show up as Obstacles in the fog of war.
+const _TILE_OWNED = 1;
+const _TILE_ENEMY = 2;
+const _TILE_CITY = 3;
+const TILE_NAMES = {
+  [TILE_EMPTY]: "EMPTY TILE",
+  [TILE_MOUNTAIN]: "MOUNTAIN TILE",
+  [TILE_FOG]: "FOG TILE",
+  [TILE_FOG_OBSTACLE]: "FOG OBSTACLE TILE"
+}
+const MOVE_MAP = [
+  'up',
+  'right',
+  'down',
+  'left',
+];
 
 module.exports = class Bot {
 
@@ -17,14 +32,27 @@ module.exports = class Bot {
   teams;
 
   // Useful props updated on game update
-  gameTick = 0;
-  ticksTilPayday = 25;
-
-  generals; // The indicies of generals we have vision of.
+  game_tick = 0;
+  ticks_til_payday = 25;
+  generals = []; // The indicies of generals we have vision of.
   cities = []; // The indicies of cities we have vision of.
   map = [];
+  owned = [];
+  perimeter = [];
+  width = null;
+  height = null;
+  current_tile = null;
+  last_move = null;
+  general_tile = null;
+  general_coords = null;
+  move_queue = [];
+
   constructor(socket){
     this.socket = socket;
+  }
+
+  chat = (msg) => {
+    this.socket.emit("chat_message", this.chat_room, msg);
   }
   /* Returns a new array created by patching the diff into the old array.
   * The diff formatted with alternating matching and mismatching segments:
@@ -56,66 +84,357 @@ module.exports = class Bot {
   }
 
   update = (data) => {
-    this.gameTick = Math.floor(data.turn / 2);
-    this.ticksTilPayday = 25 - this.gameTick % 25;
+    console.log('===========================');
+    console.log(`GAME TICK ${data.turn / 2}`);
+
+    // update game timing
+    this.game_tick = Math.ceil(data.turn / 2);
+    this.ticks_til_payday = 25 - this.game_tick % 25;
 
     // Patch the city and map diffs into our local variables.
     this.cities = this.patch(this.cities, data.cities_diff);
     this.map = this.patch(this.map, data.map_diff);
+
+
+    this.width = this.map[0];
+    this.height = this.map[1];
+    this.size = this.width * this.height;
+    this.armies = this.map.slice(2, this.size + 2);
+    this.terrain = this.map.slice(this.size + 2, this.size + 2 + this.size);
+    this.owned = this.terrain
+      .map((tile, idx) => {
+        if (tile === this.playerIndex){
+          return idx;
+        }
+        return null
+      })
+      .filter(tile => tile !== null);
+    this.perimeter = this.owned
+      .filter(tile => this.isPerimeter(tile));
+
+    if (data.turn === 1){
+      //this.chat('Good luck, everyone!');
+      this.general_tile = data.generals[this.playerIndex];
+      this.general_coords = this.getCoords(this.general_tile);
+      this.current_tile = this.general_tile;
+      let current_coords = this.getCoords(this.current_tile);
+      console.log({
+        general: this.general_tile,
+        owned: this.owned,
+        current: `${this.current_tile}, (${current_coords.x}, ${current_coords.y})`,
+        options: this.getSurroundingTiles(this.current_tile),
+        conditions: this.getSurroundingTerrain(this.current_tile),
+      });
+    }
+
+    if (data.turn % 2 === 0){
+      if (this.current_tile){
+        let tile_coords = this.getCoords(this.current_tile);
+        console.log(`current tile: ${this.current_tile} (${tile_coords.x}, ${tile_coords.y})`);
+      } else {
+        console.log('current tile: unknown');
+      }
+    } else {
+      // in between moves, lets log some useful stuff
+      console.log('cities', this.cities);
+    }
+    // Update some other props
+    if (JSON.stringify(this.generals) !== JSON.stringify(data.generals) && this.game_tick !== 0){
+      console.log({ generals: data.generals })
+    }
     this.generals = data.generals;
 
-    // The first two terms in |map| are the dimensions.
-    const width = this.map[0];
-    const height = this.map[1];
-    const size = width * height;
-
-    // The next |size| terms are army values.
-    // armies[0] is the top-left corner of the map.
-    const armies = this.map.slice(2, size + 2);
-
-    // The last |size| terms are terrain values.
-    // terrain[0] is the top-left corner of the map.
-    const terrain = this.map.slice(size + 2, size + 2 + size);
-
-
-    // Make a random move.
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      // Pick a random tile.
-      const index = Math.floor(Math.random() * size);
-
-      // If we own this tile, make a random move starting from it.
-      if (terrain[index] === this.playerIndex) {
-        const row = Math.floor(index / width);
-        const col = index % width;
-        let endIndex = index;
-
-        const rand = Math.random();
-        if (rand < 0.25 && col > 0) { // left
-          endIndex--;
-        } else if (rand < 0.5 && col < width - 1) { // right
-          endIndex++;
-        } else if (rand < 0.75 && row < height - 1) { // down
-          endIndex += width;
-        } else if (row > 0) { // up
-          endIndex -= width;
-        } else {
-          continue;
-        }
-
-        // Would we be attacking a city? Don't attack cities.
-        if (this.cities.indexOf(endIndex) >= 0) {
-          continue;
-        }
-
-        this.socket.emit("attack", index, endIndex);
-        break;
+    if (data.turn % 2 === 0){
+      if (this.move_queue.length > 0){
+        let next_move = this.move_queue.shift();
+        console.log('moving', next_move);
+        next_move(this.current_tile);
+      } else {
+        this.randomMove();
       }
     }
   }
 
+  getRandomOwned = () => {
+    const index_in_owned = Math.floor(Math.random() * this.owned.length);
+    return this.owned[index_in_owned];
+  }
+
+  getRandomPerimeter = () => {
+    const index_in_owned = Math.floor(Math.random() * this.owned.length);
+    return this.perimeter[index_in_owned];
+  }
+
+  getSurroundingTiles = (index) => {
+    return [
+      this.getUp(index),
+      this.getUpRight(index),
+      this.getRight(index),
+      this.getDownRight(index),
+      this.getDown(index),
+      this.getDownLeft(index),
+      this.getLeft(index),
+      this.getUpLeft(index)
+    ]
+  }
+
+  getSurroundingTilesSimple = (index) => {
+    return [
+      this.getUp(index),
+      this.getRight(index),
+      this.getDown(index),
+      this.getLeft(index)
+    ]
+  }
+
+  getSurroundingTerrain = (index) => {
+    return this.getSurroundingTiles(index).map(tile => this.terrain[tile]);
+  }
+
+  getSurroundingTerrainSimple = (index) => {
+    return this.getSurroundingTilesSimple(index).map(tile => this.terrain[tile]);
+  }
+
+  randomMove = (priority = [
+    TILE_EMPTY, // Empty
+    _TILE_OWNED,  // Self Owned
+    _TILE_ENEMY,  // Enemy Owned
+  ]) => {
+
+    // start trying to determine the next move
+    let found_move = false;
+    let found_move_attempt = 1;
+    while(!found_move){
+      console.log('finding next move, attempt #' + found_move_attempt);
+
+      // by default, use the current_tile,
+      // so we continue where we left off last move
+      let from_index = this.current_tile;
+      if (from_index === null){
+        // if it's null, let's just grab a random new tile,
+        // it should be one that we own,
+        // preferably one on the border of our territory
+        from_index = this.getRandomPerimeter();
+        console.log('starting from random index', from_index);
+      } else {
+        console.log('continuing from current', this.current_tile);
+      }
+
+      if (
+        // we need to own it to move from here,
+        (this.terrain[from_index] === this.playerIndex) &&
+        // and it needs armies
+        this.armies[from_index] > 1
+      ){
+        let options = this.getSurroundingTerrainSimple(from_index);
+        for (let i = 0; i < priority.length; i++){
+          console.log('Looking for ' + TILE_NAMES[priority[i]]);
+          if (options.includes(priority[i])){
+            console.log('Found tile matching priority: ' + TILE_NAMES[priority[i]]);
+
+            // map the options to array indicating
+            // whether the options is usable or not,
+            // while preserving the index of the option
+            let can_use = options.map(op => op === priority[i]);
+            console.log('can_use', can_use);
+
+            // let's not enter the loop below if there are no usable options
+            // this should never be true because of the if we are in,
+            // but just in case.
+            if (
+              can_use.length <= 0 ||
+              can_use.filter(op => op).length <= 0
+            ) {
+              console.log('no usable option');
+              break;
+            }
+
+            // get a random usable option from the options list
+            let option_index;
+            let found_option_index = false;
+            let usable_attempt = 0;
+            while (!found_option_index) {
+              console.log(`Random usable move, attempt #${++usable_attempt}`);
+
+              // get random option index
+              let index = Math.floor(Math.random() * options.length);
+              console.log(`checking ${can_use[index]} at index: ${index}`);
+              
+              // check if the option at that index is usable
+              if (can_use[index]){
+
+                // if so, let's set our option_index and leave the loop
+                option_index = index;
+                found_option_index = true;
+                console.log(`moving ${MOVE_MAP[option_index]} to ${TILE_NAMES[options[option_index]]} ${options[option_index]}`);
+              }
+            }
+
+            // loop over the moves that match moving to this option
+            console.log('queuing up moves');
+            this.move_queue = this.move_queue.concat(this.optionsToMovesMap[option_index]);
+            let next_move = this.move_queue.shift();
+            console.log('moving', next_move);
+            found_move = true;
+            next_move(from_index);
+            break; // break from for loop
+          }
+        }
+
+        // quit while loop
+        if (found_move){
+          break; // break from while loop
+        }
+      } else {
+        if (!(this.terrain[from_index] === this.playerIndex)){
+          console.log('given starting tile not owned');
+        } else {
+          console.log('not enough armies on given tile');
+        }
+        this.current_tile = null;
+      }
+    }
+  }
+
+  // Getting surrounding tiles
+  getLeft      = index => index - 1;
+  getRight     = index => index + 1;
+  getDown      = index => index + this.width;
+  getUp        = index => index - this.width;
+  getUpLeft    = index => this.getLeft(this.getUp(index));
+  getUpRight   = index => this.getRight(this.getUp(index));
+  getDownLeft  = index => this.getLeft(this.getDown(index));
+  getDownRight = index => this.getRight(this.getDown(index));
+
+  // Moving to surrounding tiles
+  attack = (from, to) => {
+    console.log('attack', [from, to]);
+    this.socket.emit("attack", from, to);
+    this.current_tile = to;
+  }
+  left = (index) => {
+    this.attack(index, this.getLeft(index));
+  }
+  right = (index) => {
+    this.attack(index, this.getRight(index));
+  }
+  down = (index) => {
+    this.attack(index, this.getDown(index));
+  }
+  up = (index) => {
+    this.attack(index, this.getUp(index))
+  }
+
+  // helper for translating options to moves
+  optionsToMovesMap = [
+    [this.up],
+    [this.right],
+    [this.down],
+    [this.left],
+  ]
+
+  // check if tile is a perimeter tile
+  isPerimeter = (tile) => {
+    // first check we actually own it,
+    if (this.terrain[tile] === this.playerIndex){
+      // then check that it at least is not surrounding entirely by tiles we own
+      let surrounding = this.getSurroundingTerrain(tile);
+      let filtered = surrounding.filter(tile => tile !== this.playerIndex);
+      return filtered.length > 0;
+    }
+    return false;
+  }
+
   // get distance between two tiles
-  // get x, y of tile
+  distanceBetweenTiles = (a, b) => {
+    return this.distanceBetweenCoords(this.getCoords(a), this.getCoords(b));
+  }
+  // get the distance between two points
+  distanceBetweenCoords = (a, b) => {
+    return Math.sqrt(Math.pow((a.y - a.x), 2) + Math.pow((b.y - b.x), 2));
+  }
+  // get x, y of tile 
+  getCoords = (tile) => {
+    var y = Math.floor(tile / this.width);
+		var x = tile % this.width;
+    return { x, y };
+  }
+  getTileAtCoords = (x, y) => {
+    return y * this.width + x;
+  }
+
+  // find shortest valid path
+  getPath = (start, finish) => {
+
+    // each point from which we should explore paths
+    let q = this
+      .getSurroundingTilesSimple(start)
+      .map(tile => this.getCoords(tile));
+
+    // the coords of our target tile
+    let end = this.getCoords(finish);
+    
+    // a virtual model of our map
+    let m = [];
+
+    // the current path
+    let path = [];
+
+    let found_path = false;
+    
+    // loop over queue to explore all path options
+    while (q.length !== 0){
+
+      // get the next point (first point will be our start prop)
+      let {x, y} = q.shift();
+      
+      // if outside the map bounds
+      if (x < 0 || x >= this.height || y < 0 || y >= this.width)
+        continue;
+        
+      // if we can't travel there,
+      // for now just checking that it's empty,
+      // TODO: allow moving to owned tiles (check army amount for enemy tiles),
+      // TODO: allow crossing cities if owned
+      if (
+        (this.terrain[x][y] !== TILE_EMPTY)
+      )
+        continue;
+
+      // check our virual map to see if it's already been visited
+      if (m[x][y] === 0)
+        continue;
+  
+      // if in the BFS algorithm process there was a
+      // vertex x=(i,j) such that M[i][j] is 2 stop and
+      // return true
+      if (x === end.x && y === end.y){
+        found_path = true;
+        continue;
+      }
+        
+      // marking as wall upon successful visitation
+      m[x][y] = 0;
+      path.push(this.getTileAtCoords(x, y));
+
+      // pushing to queue all directions to explore
+      let tile = his.getTileAtCoords(x, y);
+      q.concat(this
+        .getSurroundingTilesSimple(tile)
+        .map(tile => this.getCoords(tile))
+      )
+
+      // push good tile to 
+      path.push(tile);
+    }
+
+    if (found_path){
+      return path;
+    }
+
+    return [];
+  }
+
   // find closest two tiles of set
   // get set of owned tiles
   // get set of enemey tiles
@@ -126,6 +445,7 @@ module.exports = class Bot {
   // take general
   // defend geneneral
 
+  // get moves to go from one point to the next
 
   // at start, find city + farm + add armies to general
   // if someone is in site, attack their armies

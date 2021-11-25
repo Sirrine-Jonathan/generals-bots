@@ -95,7 +95,7 @@ socket.on("connect", () => {
   });
   
   function leaveGame() {
-    console.log(`${process.env.BOT_USER_NAME} left the game`);
+    console.log(`${username} left the game`);
     socket.emit("leave_game");
   }
 

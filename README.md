@@ -1,3 +1,5 @@
 # Generals Bots
 
-### Add your bot to the `/bots` directory
+[Play Here](https://generals-bots.herokuapp.com/)
+
+

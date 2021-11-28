@@ -8,7 +8,6 @@ const TILE_FOG_OBSTACLE = -4; // Cities and Mountains show up as Obstacles in th
 const _TILE_OWNED = 1;
 const _TILE_ENEMY = 2;
 const _TILE_CITY = 3;
-<<<<<<< HEAD
 const TILE_NAMES = {
   [TILE_EMPTY]: "EMPTY TILE",
   [TILE_MOUNTAIN]: "MOUNTAIN TILE",
@@ -21,8 +20,6 @@ const MOVE_MAP = [
   'down',
   'left',
 ];
-=======
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
 
 module.exports = class Bot {
 
@@ -37,28 +34,19 @@ module.exports = class Bot {
   // Useful props updated on game update
   game_tick = 0;
   ticks_til_payday = 25;
-<<<<<<< HEAD
   generals = []; // The indicies of generals we have vision of.
   cities = []; // The indicies of cities we have vision of.
   map = [];
   owned = [];
   perimeter = [];
-=======
-  generals; // The indicies of generals we have vision of.
-  cities = []; // The indicies of cities we have vision of.
-  map = [];
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
   width = null;
   height = null;
   current_tile = null;
   last_move = null;
   general_tile = null;
-<<<<<<< HEAD
   general_coords = null;
   move_queue = [];
 
-=======
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
   constructor(socket){
     this.socket = socket;
   }
@@ -96,20 +84,16 @@ module.exports = class Bot {
   }
 
   update = (data) => {
-<<<<<<< HEAD
     console.log('===========================');
     console.log(`GAME TICK ${data.turn / 2}`);
 
     // update game timing
-=======
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
     this.game_tick = Math.ceil(data.turn / 2);
     this.ticks_til_payday = 25 - this.game_tick % 25;
 
     // Patch the city and map diffs into our local variables.
     this.cities = this.patch(this.cities, data.cities_diff);
     this.map = this.patch(this.map, data.map_diff);
-<<<<<<< HEAD
 
 
     this.width = this.map[0];
@@ -117,17 +101,6 @@ module.exports = class Bot {
     this.size = this.width * this.height;
     this.armies = this.map.slice(2, this.size + 2);
     this.terrain = this.map.slice(this.size + 2, this.size + 2 + this.size);
-=======
-
-    // Update some other props
-    this.generals = data.generals;
-    this.width = this.map[0];
-    this.height = this.map[1];
-    this.size = this.width * this.height;
-    this.armies = this.map.slice(2, this.size + 2);
-    this.terrain = this.map.slice(this.size + 2, this.size + 2 + this.size);
-
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
     this.owned = this.terrain
       .map((tile, idx) => {
         if (tile === this.playerIndex){
@@ -136,7 +109,6 @@ module.exports = class Bot {
         return null
       })
       .filter(tile => tile !== null);
-<<<<<<< HEAD
     this.perimeter = this.owned
       .filter(tile => this.isPerimeter(tile));
 
@@ -320,125 +292,6 @@ module.exports = class Bot {
           console.log('not enough armies on given tile');
         }
         this.current_tile = null;
-=======
-    
-    if (this.terrain[this.last_move] === this.playerIndex){
-      console.log('did set last move as current');
-      this.current_tile = this.last_move;
-    }
-
-    if (data.turn === 1){
-      this.chat('Good luck, everyone!');
-      this.generalTile = this.generals[this.playerIndex];
-      this.generalCoords = this.getCoords(this.generalTile);
-      this.current_tile = this.owned[0];
-      this.general_tile = this.owned[0];
-
-      console.log({ 
-        owned: this.owned,
-        current: this.current_tile,
-        options: this.getSurroundingTiles(this.current_tile),
-        conditions: this.getSurroundingTerrain(this.current_tile),
-      });
-    }
-
-    if (this.game_tick % 5 === 0){
-    //   console.log(`tick ${this.game_tick}`);
-    //   console.log({ terrain: this.terrain });
-    //   console.log({ owned: this.owned, current: this.current_tile });
-    }
-
-    this.randomMove();
-  }
-
-  getRandomOwned = () => {
-    const index_in_owned = Math.floor(Math.random() * this.owned.length);
-    return this.owned[index_in_owned];
-  }
-
-  getSurroundingTiles = (index) => {
-    return [
-      this.getUp(index),
-      this.getUpRight(index),
-      this.getRight(index),
-      this.getDownRight(index),
-      this.getDown(index),
-      this.getDownLeft(index),
-      this.getLeft(index),
-      this.getUpLeft(index)
-    ]
-  }
-
-  getSurroundingTerrain = (index) => {
-    return this.getSurroundingTiles(index).map(tile => this.terrain[tile]);
-  }
-
-  randomMove = (priority = [
-    TILE_FOG, // Fog
-    TILE_EMPTY, // Empty
-    _TILE_OWNED,  // Self Owned
-    _TILE_ENEMY,  // Enemy Owned
-  ]) => {
-    let tutorial = false;
-    if (tutorial){
-      while(true){
-        let index = this.current_tile;
-        if (index === null){
-          index = this.getRandomOwned();
-        }
-        if (this.terrain[index] === this.playerIndex){
-          
-          var row = Math.floor(index / this.width);
-          var col = index % this.width;
-      
-          var rand = Math.random();
-          if (rand < 0.25 && col > 0) { // left
-            console.log('left');
-            this.left(index);
-          } else if (rand < 0.5 && col < this.width - 1) { // right
-            console.log('right');
-            this.right(index);
-          } else if (rand < 0.75 && row < this.height - 1) { // down
-            console.log('down');
-            this.down(index);
-          } else if (row > 0) { //up
-            console.log('up');
-            this.up(index);
-          } else {
-            continue;
-          }
-          break;
-        }
-      }
-    } else {
-      let found_move = false;
-      while(!found_move){
-        let index = this.current_tile;
-        if (index === null){
-          index = this.getRandomOwned();
-          console.log('got random index', index);
-        }
-        if (this.terrain[index] === this.playerIndex){
-          let options = this.getSurroundingTerrain(index);
-          for (let i = 0; i < priority.length; i++){
-            if (options.includes(priority[i])){
-              let option_index = options.indexOf(priority[i]);
-              console.log('running option ' + option_index);
-              this.optionsToMovesMap[option_index].forEach(move => {
-                console.log('moving', move);
-                found_move = true;
-                move(index);
-              })
-              break;
-            }
-          }
-          if (found_move){
-            break;
-          }
-        } else {
-          this.current_tile = null;
-        }
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
       }
     }
   }
@@ -457,12 +310,7 @@ module.exports = class Bot {
   attack = (from, to) => {
     console.log('attack', [from, to]);
     this.socket.emit("attack", from, to);
-<<<<<<< HEAD
     this.current_tile = to;
-=======
-    this.last_move = to;
-    this.current_tile = null;
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
   }
   left = (index) => {
     this.attack(index, this.getLeft(index));
@@ -480,7 +328,6 @@ module.exports = class Bot {
   // helper for translating options to moves
   optionsToMovesMap = [
     [this.up],
-<<<<<<< HEAD
     [this.right],
     [this.down],
     [this.left],
@@ -498,24 +345,12 @@ module.exports = class Bot {
     return false;
   }
 
-=======
-    [this.up, this.right],
-    [this.right],
-    [this.right, this.down],
-    [this.down],
-    [this.down, this.left],
-    [this.left],
-    [this.left, this.up],
-  ]
-
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
   // get distance between two tiles
   distanceBetweenTiles = (a, b) => {
     return this.distanceBetweenCoords(this.getCoords(a), this.getCoords(b));
   }
   // get the distance between two points
   distanceBetweenCoords = (a, b) => {
-<<<<<<< HEAD
     return Math.sqrt(Math.pow((a.y - a.x), 2) + Math.pow((b.y - b.x), 2));
   }
   // get x, y of tile 
@@ -600,14 +435,6 @@ module.exports = class Bot {
     return [];
   }
 
-=======
-    return Math.sqrt(Math.pow((a[1] - a[0]), 2) + Math.pow((b[1] - b[0]), 2));
-  }
-  // get x, y of tile 
-  getCoords = (tile) => {
-    return [tile % this.width + 1, this.height - (tile % this.height)];
-  }
->>>>>>> 38892e524a2c9c1f72657e66684c4378489d8f0c
   // find closest two tiles of set
   // get set of owned tiles
   // get set of enemey tiles

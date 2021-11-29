@@ -483,6 +483,8 @@ module.exports = class Bot {
         console.log('checking tile at ', {x, y});
       }
 
+      // patch
+
       // if the current tile is the end tile
       // mark path has found and exit loop
       if (x === end.x && y === end.y){

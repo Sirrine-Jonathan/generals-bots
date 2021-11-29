@@ -61,7 +61,7 @@ module.exports = class Bot {
   * The diff formatted with alternating matching and mismatching segments:
   * Example 1: patching a diff of [1, 1, 3] onto [0, 0] yields [0, 3].
   * Example 2: patching a diff of [0, 1, 2, 1] onto [0, 0] yields [2, 0].
-  * 
+  *
   * First element of diff is how many are matching.
   * Patch will copy that number of elements to out.
   * Next element in diff is how many are differnt.
@@ -426,7 +426,7 @@ module.exports = class Bot {
     return Math.sqrt(Math.pow((a.y - a.x), 2) + Math.pow((b.y - b.x), 2));
   }
 
-  // get x, y of tile 
+  // get x, y of tile
   getCoords = (tile) => {
     var y = Math.floor(tile / this.width);
 		var x = tile % this.width;
@@ -451,7 +451,7 @@ module.exports = class Bot {
     if (LOG_GET_PATH){
       console.log('coords of target', end);
     }
-    
+
     // each point from which we should explore paths
     let q = this
       .getSurroundingTilesSimple(start)
@@ -468,7 +468,7 @@ module.exports = class Bot {
     let path = [];
 
     let found_path = false;
-    
+
     // loop over queue to explore all path options
     let loop_count = 0;
     while (q.length !== 0){
@@ -481,7 +481,6 @@ module.exports = class Bot {
 
       if (LOG_GET_PATH){
         console.log('checking tile at ', {x, y});
-        console.log('terrain is ', this.terrain[x][y]);
       }
 
       // if the current tile is the end tile
@@ -500,7 +499,7 @@ module.exports = class Bot {
           console.log('end', end);
         }
       }
-      
+
       // if outside the map bounds
       if (x < 0 || x >= this.height || y < 0 || y >= this.width){
         if (LOG_GET_PATH){
@@ -508,7 +507,7 @@ module.exports = class Bot {
         }
         continue;
       }
-        
+
       // check if we can't travel there,
       // cant cont. if not empty tile, or if it's not owned by a player
       // TODO: allow moving to owned tiles (check army amount for enemy tiles),

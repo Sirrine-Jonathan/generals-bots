@@ -21,7 +21,21 @@ const MOVE_MAP = [
   'left',
 ];
 
+const GENERAL_OBJECTIVE = "GENERAL";
+const CITY_OBJECTIVE = "CITY";
+const POSITION_OBJECTIVE = "POSITION";
+
+const Objective = function(queue, type, target){
+  this.queue = queue;
+  this.type = type;
+  this.target = target
+}
+
 module.exports = class Bot {
+
+  // BOT CONFIG
+  PULL_FROM_GENERAL_MAX = 50;
+  ATTACK_CITIES_MAX = 100;
 
   // Game data from game_start
   playerIndex;
@@ -42,10 +56,12 @@ module.exports = class Bot {
   width = null;
   height = null;
   current_tile = null;
+  current_coors = null;
   last_move = null;
   general_tile = null;
   general_coords = null;
   move_queue = [];
+  objective_queue = [];
 
   // temp debug props
   queue_move = false;
@@ -54,9 +70,11 @@ module.exports = class Bot {
     this.socket = socket;
   }
 
+  // chat helper
   chat = (msg) => {
     this.socket.emit("chat_message", this.chat_room, msg);
   }
+
   /* Returns a new array created by patching the diff into the old array.
   * The diff formatted with alternating matching and mismatching segments:
   * Example 1: patching a diff of [1, 1, 3] onto [0, 0] yields [0, 3].
@@ -86,11 +104,12 @@ module.exports = class Bot {
     return out;
   }
 
+  // runs twice every game tick
   update = (data) => {
     // console.log('===========================');
     // console.log(`GAME TICK ${data.turn / 2}`);
 
-    // update game timing
+    // game timing
     this.game_tick = Math.ceil(data.turn / 2);
     this.ticks_til_payday = 25 - this.game_tick % 25;
 
@@ -111,70 +130,108 @@ module.exports = class Bot {
     this.perimeter = this.owned
       .filter(tile => this.isPerimeter(tile));
 
+    // do things at first turn
     if (data.turn === 1){
-      //this.chat('Good luck, everyone!');
+      this.chat('Good luck, everyone!');
       this.general_tile = data.generals[this.playerIndex];
       this.general_coords = this.getCoords(this.general_tile);
       this.current_tile = this.general_tile;
-      let current_coords = this.getCoords(this.current_tile);
+      this.current_coords = this.getCoords(this.current_tile);
       console.log({
         general: this.general_tile,
         owned: this.owned,
-        current: `${this.current_tile}, (${current_coords.x}, ${current_coords.y})`,
+        current: `${this.current_tile}, (${this.current_coords.x}, ${this.current_coords.y})`,
         options: this.getSurroundingTiles(this.current_tile),
         conditions: this.getSurroundingTerrain(this.current_tile),
       });
     }
 
-    if (data.turn % 2 === 0){
-      if (this.current_tile){
-        let tile_coords = this.getCoords(this.current_tile);
-        // console.log(`current tile: ${this.current_tile} (${tile_coords.x}, ${tile_coords.y})`);
-      } else {
-        // console.log('current tile: unknown');
-      }
-    } else {
-      // Half Turn Reporting
-    }
-
-    // Update generals, report if updated
+    // Check if visible generals are updated
     if (JSON.stringify(this.generals) !== JSON.stringify(data.generals) && this.game_tick !== 0){
+
+      // log things
       console.log(`GAME TICK ${data.turn / 2}`);
-      console.log({ generals: data.generals })
+      console.log({ generals: data.generals });
+
+      // filter out bot itself
       let generals = data.generals.filter(general => general !== -1 && general !== this.general_tile);
+
+      // if others are still visible...
       if (generals.length > 0){
+
+        // find the closest general
         let closest = this.getClosest(this.current_tile || this.getRandomOwned(), generals);
         console.log({ closest });
+
+        // get the path to the closest generals
         let path_to_general = this.getPath(this.current_tile || this.getRandomOwned(), closest);
         console.log({ path_to_general });
-        this.move_queue.concat(path_to_general)
+
+        // set objective, clear queue to take this as highest priority
+        if (this.objective_queue.length > 0 && this.objective_queue[0].type !== GENERAL_OBJECTIVE){
+          this.objective_queue = [];
+          this.objective_queue.push(new Objective(path_to_general, GENERAL_OBJECTIVE, closest));
+        }
       }
     }
+    // update internal generals prop after checking for differences
     this.generals = data.generals;
 
-    // Update cities report if updated
+    // Check if visible cities has changed
     let cities = this.patch(this.cities, data.cities_diff);
     if (JSON.stringify(cities) !== JSON.stringify(this.cities) && this.game_tick !== 0){
+
+      // filter out owned cities
+      let unowned_cities = cities.filter(city => city !== TILE_EMPTY);
+
+      // log things
       console.log(`GAME TICK ${data.turn / 2}`);
-      console.log({ cities });
-      if (this.game_tick < 500 && cities.length > 0){
-        let closest = this.getClosest(this.current_tile || this.getRandomOwned(), cities);
+      console.log({ all_cities: cities, all_unowned_cities: unowned_cities });
+
+
+
+      // Only focus on new visible cities before a specified game tick
+      if (this.game_tick < this.ATTACK_CITIES_MAX && unowned_cities.length > 0){
+
+        // find the closest city
+        let closest = this.getClosest(this.current_tile || this.getRandomOwned(), unowned_cities);
         console.log({ closest });
+
+        // get the path to the closest city
         let path_to_city = this.getPath(this.current_tile || this.getRandomOwned(), closest);
         console.log({ path_to_city });
+
+        this.objective_queue.push(new Objective(path_to_city, CITY_OBJECTIVE, closest));
       }
     }
     this.cities = cities;
 
+
+    // Do things on each tick (not half tick)
     if (data.turn % 2 === 0){
-      if (this.move_queue.length > 0){
-        let next_move = this.move_queue.shift();
-        console.log('shifting from queue', next_move);
-        this.queue_move = true;
-        next_move(this.current_tile);
-        this.queue_move = false;
-      } else {
+
+      // find the next objective
+      let objective;
+      while (objective === undefined && this.objective_queue.length > 0){
+        let next_objective = this.objective_queue[0];
+        if (next_objective.queue.length > 0){
+          objective = next_objective;
+        } else {
+          let completed_objective = this.objective_queue.shift()
+          console.log('OBJECTIVE COMPLETE', completed_objective);
+        }
+      }
+
+      // if there's no objective, let's resort to doing a random move,
+      if (!objective){
+        console.log(`Random move at tick ${data.turn / 2}`);
         this.randomMove();
+      } else {
+        let updated_objective = this.executeObjectiveStep(objective);
+        if (updated_objective.queue.length <= 0){
+          let completed_objective = this.objective_queue.shift()
+          console.log('OBJECTIVE COMPLETE', completed_objective);
+        }
       }
     }
   }
@@ -217,6 +274,22 @@ module.exports = class Bot {
 
   getSurroundingTerrainSimple = (index) => {
     return this.getSurroundingTilesSimple(index).map(tile => this.terrain[tile]);
+  }
+
+  // takes a queue and returns the updated queue,
+  // this function will handle executing the move and refreshing the queue
+  // if the queue needs to be continued from a better source.
+  executeObjectiveStep = (objective) => {
+    if (objective.queue.length <= 0) return objective;
+    if (this.current_tile && this.armiesAtTile(this.current_tile) > 1){
+      // continue with the queue move
+      let next_move = objective.queue[0];
+      next_move(this.current_tile);
+    } else {
+      let best_source = this.getBestSourceTile();
+      objective.queue = this.getPath(best_source, objective.target)
+    }
+    return objective;
   }
 
   randomMove = (priority = [
@@ -397,9 +470,30 @@ module.exports = class Bot {
     return false;
   }
 
-  bestSource = () => {
-    let armies_at_owned = this.owned.map(tile => [tile, this.armies[tile]]);
-    console.log(armies_at_owned);
+  // helper for checking if tile is the general tile
+  isGeneral = (tile) => tile === this.general_tile;
+
+  // helper to see if we own a tile
+  isOwned = (tile) => this.owned.indexOf(tile);
+
+  // helper for getting the number of armies at a tile
+  armiesAtTile = (tile) => this.armies[tile];
+
+  // get the tile that will be the best source of armies
+  getBestSourceTile = (includeGeneral = false) => {
+    let most_armies = 0;
+    let best_tile = null;
+    this.owned.forEach((tile) => {
+      let armies_at_tile = this.armies[tile];
+      if (
+        (best_tile === null || armies_at_tile > most_armies) &&
+        (includeGeneral || !this.isGeneral(tile))
+      ){
+        best_tile = tile;
+        most_armies = armies_at_tile;
+      }
+    })
+    return best_tile;
   }
 
   getClosest = (current_tile, tile_list) => {

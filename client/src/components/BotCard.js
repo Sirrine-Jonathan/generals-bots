@@ -16,8 +16,8 @@ const BotCard = ({bot}) => {
     fetch(`/invite/${dir}/${gameID}`)
       .then((res) => res.json())
       .then((data) => {
-        toast(`Playing on ${data.url}`);
-        //window.open(data.url, '_blank');
+        toast(`${data.url}`);
+        setTimeout(() => window.open(data.url, '_blank'), 2000);
       })
   }
   return (

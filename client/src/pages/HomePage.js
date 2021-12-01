@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import { Container, Header, Divider, Icon, Image } from 'semantic-ui-react';
+import { Container, Icon, } from 'semantic-ui-react';
 import Mosaic from '../components/Mosiac';
 import PageHeader from '../components/PageHeader';
 import PageContainer from '../components/PageContainer';

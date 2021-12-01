@@ -8,7 +8,8 @@
     "watch": "nodemon server",
     "build": "cd client/ && yarn install && yarn build",
     "quick-build": "cd client && yarn build",
-    "test": "cd ./server && node index.js 5500"
+    "test": "cd ./server && node index.js 5500",
+    "refresh": "yarn install & cd ./server && rm -rf ./node_modules && yarn install & cd ./client && rm -rf ./node_modules && yarn install"
   },
   "repository": {
     "type": "git",

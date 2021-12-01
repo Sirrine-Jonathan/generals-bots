@@ -5,9 +5,6 @@ const TILE_EMPTY = -1;
 const TILE_MOUNTAIN = -2;
 const TILE_FOG = -3;
 const TILE_FOG_OBSTACLE = -4; // Cities and Mountains show up as Obstacles in the fog of war.
-const _TILE_OWNED = 1;
-const _TILE_ENEMY = 2;
-const _TILE_CITY = 3;
 const TILE_NAMES = {
   [TILE_EMPTY]: "EMPTY TILE",
   [TILE_MOUNTAIN]: "MOUNTAIN TILE",
@@ -36,9 +33,11 @@ module.exports = class Bot {
   // BOT CONFIG
   PULL_FROM_GENERAL_MAX = 50;
   ATTACK_CITIES_MAX = 100;
+  ATTACK_GENERALS = false;
+  ATTACK_CITIES = false;
 
   // Game data from game_start
-  playerIndex;
+  playerIndex = null;
   replay_id;
   chat_room;
   team_chat_room;
@@ -109,6 +108,10 @@ module.exports = class Bot {
     // console.log('===========================');
     // console.log(`GAME TICK ${data.turn / 2}`);
 
+    if (this.playerIndex === null){
+      this.playerIndex = data.playerIndex;
+    }
+
     // game timing
     this.game_tick = Math.ceil(data.turn / 2);
     this.ticks_til_payday = 25 - this.game_tick % 25;
@@ -141,13 +144,18 @@ module.exports = class Bot {
         general: this.general_tile,
         owned: this.owned,
         current: `${this.current_tile}, (${this.current_coords.x}, ${this.current_coords.y})`,
+        dimensions: `${this.width} x ${this.height}`,
         options: this.getSurroundingTiles(this.current_tile),
         conditions: this.getSurroundingTerrain(this.current_tile),
       });
     }
 
     // Check if visible generals are updated
-    if (JSON.stringify(this.generals) !== JSON.stringify(data.generals) && this.game_tick !== 0){
+    if (
+      JSON.stringify(this.generals) !== JSON.stringify(data.generals) &&
+      this.game_tick !== 0 &&
+      this.ATTACK_GENERALS
+    ){
 
       // log things
       console.log(`GAME TICK ${data.turn / 2}`);
@@ -179,7 +187,11 @@ module.exports = class Bot {
 
     // Check if visible cities has changed
     let cities = this.patch(this.cities, data.cities_diff);
-    if (JSON.stringify(cities) !== JSON.stringify(this.cities) && this.game_tick !== 0){
+    if (
+      JSON.stringify(cities) !== JSON.stringify(this.cities) &&
+      this.game_tick !== 0 &&
+      this.ATTACK_CITIES
+    ){
 
       // filter out owned cities
       let unowned_cities = cities.filter(city => city !== TILE_EMPTY);
@@ -280,32 +292,53 @@ module.exports = class Bot {
   // this function will handle executing the move and refreshing the queue
   // if the queue needs to be continued from a better source.
   executeObjectiveStep = (objective) => {
-    if (objective.queue.length <= 0) return objective;
+    const LOG_OBJECTIVE_STEP = true;
+    if (LOG_OBJECTIVE_STEP){
+      console.log('Running next step on objective', objective);
+    }
+    if (objective.queue.length <= 0) {
+      if (LOG_OBJECTIVE_STEP){
+        console.log('Objective has empty queue');
+      }
+      return objective;
+    }
     if (this.current_tile && this.armiesAtTile(this.current_tile) > 1){
-      // continue with the queue move
+      if (LOG_OBJECTIVE_STEP){
+        console.log('current tile is set and has armies');
+      }
       let next_move = objective.queue[0];
+      if (LOG_OBJECTIVE_STEP){
+        console.log('next move in queue', next_move);
+      }
       next_move(this.current_tile);
     } else {
       let best_source = this.getBestSourceTile();
+      if (LOG_OBJECTIVE_STEP){
+        console.log('using best source tile', best_source);
+        console.log('refreshing queue')
+      }
       objective.queue = this.getPath(best_source, objective.target)
+      if (LOG_OBJECTIVE_STEP){
+        console.log('queue refreshed', objective);
+      }
     }
     return objective;
   }
 
   randomMove = (priority = [
-    TILE_EMPTY, // Empty
-    _TILE_OWNED,  // Self Owned
-    _TILE_ENEMY,  // Enemy Owned
+    this.isEnemy,  // Enemy Owned
+    this.isEmpty, // Empty
+    this.isOwned,  // Self Owned
   ]) => {
 
-    const LOG_RANDOM_MOVE = false;
+    const LOG_RANDOM_MOVE = true;
 
     // start trying to determine the next move
     let found_move = false;
-    let found_move_attempt = 1;
+    let found_move_attempt = 0;
     while(!found_move){
       if (LOG_RANDOM_MOVE){
-        console.log('finding next move, attempt #' + found_move_attempt);
+        console.log(`finding next move, attempt #${++found_move_attempt}`);
       }
       // by default, use the current_tile,
       // so we continue where we left off last move
@@ -314,7 +347,7 @@ module.exports = class Bot {
         // if it's null, let's just grab a random new tile,
         // it should be one that we own,
         // preferably one on the border of our territory
-        from_index = this.getRandomPerimeter();
+        from_index = this.getBestSourceTile(true);
         if (LOG_RANDOM_MOVE){
           console.log('starting from random index', from_index);
         }
@@ -328,76 +361,72 @@ module.exports = class Bot {
         // and it needs armies
         this.armies[from_index] > 1
       ){
-        let options = this.getSurroundingTerrainSimple(from_index);
+        let options = this.getSurroundingTilesSimple(from_index);
         for (let i = 0; i < priority.length; i++){
           if (LOG_RANDOM_MOVE){
-            console.log('Looking for ' + TILE_NAMES[priority[i]]);
+            console.log('checking options with fn: ' + priority[i]);
+            console.log('passing all options', options);
           }
-          if (options.includes(priority[i])){
-            if (LOG_RANDOM_MOVE){
-              console.log('Found tile matching priority: ' + TILE_NAMES[priority[i]]);
-            }
-            // map the options to array indicating
-            // whether the options is usable or not,
-            // while preserving the index of the option
-            let can_use = options.map(op => op === priority[i]);
-            if (LOG_RANDOM_MOVE){
-              console.log('can_use', can_use);
-            }
 
-            // let's not enter the loop below if there are no usable options
-            // this should never be true because of the if we are in,
-            // but just in case.
-            if (
-              can_use.length <= 0 ||
-              can_use.filter(op => op).length <= 0
-            ) {
-              if (LOG_RANDOM_MOVE){
-                console.log('no usable option');
-              }
-              break;
-            }
-
-            // get a random usable option from the options list
-            let option_index;
-            let found_option_index = false;
-            let usable_attempt = 0;
-            while (!found_option_index) {
-              if (LOG_RANDOM_MOVE){
-                console.log(`Random usable move, attempt #${++usable_attempt}`);
-              }
-
-              // get random option index
-              let index = Math.floor(Math.random() * options.length);
-              if (LOG_RANDOM_MOVE){
-                console.log(`checking ${can_use[index]} at index: ${index}`);
-              }
-
-              // check if the option at that index is usable
-              if (can_use[index]){
-
-                // if so, let's set our option_index and leave the loop
-                option_index = index;
-                found_option_index = true;
-                if (LOG_RANDOM_MOVE){
-                  console.log(`moving ${MOVE_MAP[option_index]} to ${TILE_NAMES[options[option_index]]} ${options[option_index]}`);
-                }
-              }
-            }
-
-            // loop over the moves that match moving to this option
-            if (LOG_RANDOM_MOVE){
-              console.log('queuing up moves');
-            }
-            this.move_queue = this.move_queue.concat(this.optionsToMovesMap[option_index]);
-            let next_move = this.move_queue.shift();
-            if (LOG_RANDOM_MOVE){
-              console.log('moving', next_move);
-            }
-            found_move = true;
-            next_move(from_index);
-            break; // break from for loop
+          // map the options to array indicating
+          // whether the options is usable or not,
+          // while preserving the index of the option
+          let can_use = options.map(op => priority[i](op));
+          if (LOG_RANDOM_MOVE){
+            console.log('can_use', can_use);
           }
+
+          // let's not enter the loop below if there are no usable options
+          // this should never be true because of the if we are in,
+          // but just in case.
+          if (
+            can_use.length <= 0 ||
+            can_use.filter(op => Boolean(op)).length <= 0
+          ) {
+            if (LOG_RANDOM_MOVE){
+              console.log('no usable option');
+            }
+            continue;
+          }
+
+          // get a random usable option from the options list
+          let option_index;
+          let found_option_index = false;
+          let usable_attempt = 0;
+          while (!found_option_index) {
+            if (LOG_RANDOM_MOVE){
+              console.log(`Random usable move, attempt #${++usable_attempt}`);
+            }
+
+            // get random option index
+            let index = Math.floor(Math.random() * options.length);
+            if (LOG_RANDOM_MOVE){
+              console.log(`checking ${can_use[index]} at index: ${index}`);
+            }
+
+            // check if the option at that index is usable
+            if (can_use[index]){
+
+              // if so, let's set our option_index and leave the loop
+              option_index = index;
+              found_option_index = true;
+              if (LOG_RANDOM_MOVE){
+                console.log(`moving ${MOVE_MAP[option_index]} to ${options[option_index]}`);
+              }
+            }
+          }
+
+          // loop over the moves that match moving to this option
+          if (LOG_RANDOM_MOVE){
+            console.log('queuing up moves');
+          }
+          let next_move = this.optionsToMovesMap[option_index];
+          if (LOG_RANDOM_MOVE){
+            console.log('next move', next_move);
+          }
+          found_move = true;
+          next_move(from_index);
+          break; // break from for loop
         }
 
         // quit while loop
@@ -414,6 +443,10 @@ module.exports = class Bot {
             console.log('not enough armies on given tile');
           }
         }
+        if (LOG_RANDOM_MOVE){
+          console.log('setting current tile to null');
+        }
+
         this.current_tile = null;
       }
     }
@@ -452,10 +485,10 @@ module.exports = class Bot {
 
   // helper for translating options to moves
   optionsToMovesMap = [
-    [this.up],
-    [this.right],
-    [this.down],
-    [this.left],
+    this.up,
+    this.right,
+    this.down,
+    this.left,
   ]
 
   // check if tile is a perimeter tile
@@ -474,25 +507,51 @@ module.exports = class Bot {
   isGeneral = (tile) => tile === this.general_tile;
 
   // helper to see if we own a tile
-  isOwned = (tile) => this.owned.indexOf(tile);
+  isOwned = (tile) => this.owned.includes(tile);
+
+  // helper to see if tile is empty
+  isEmpty = (tile) => this.terrain[tile] === TILE_EMPTY;
+
+  isEnemy = (tile) => {
+    console.log(`isEnemy? ${tile}`);
+    console.log(`this.terrain[tile] !== this.playerIndex | ${this.terrain[tile]} !== ${this.playerIndex}`);
+    console.log(`this.terrain >= 0 | ${this.terrain[tile]} >= 0`);
+    return this.terrain[tile] !== this.playerIndex && this.terrain[tile] >= 0
+  };
 
   // helper for getting the number of armies at a tile
   armiesAtTile = (tile) => this.armies[tile];
 
   // get the tile that will be the best source of armies
   getBestSourceTile = (includeGeneral = false) => {
+    const LOG_BEST_SOURCE = true;
     let most_armies = 0;
     let best_tile = null;
+    if (LOG_BEST_SOURCE){
+      console.log('finding best source, looping through all owned: ', this.owned);
+    }
     this.owned.forEach((tile) => {
+      if (LOG_BEST_SOURCE){
+        console.log('checking tile: ', tile);
+      }
       let armies_at_tile = this.armies[tile];
+      if (LOG_BEST_SOURCE){
+        console.log('armies at tile: ', armies_at_tile);
+      }
       if (
         (best_tile === null || armies_at_tile > most_armies) &&
         (includeGeneral || !this.isGeneral(tile))
       ){
+        if (LOG_BEST_SOURCE){
+          console.log(`found better tile than ${best_tile}, ${tile}`);
+        }
         best_tile = tile;
         most_armies = armies_at_tile;
       }
     })
+    if (LOG_BEST_SOURCE){
+      console.log(`returning best tile ${best_tile}`);
+    }
     return best_tile;
   }
 

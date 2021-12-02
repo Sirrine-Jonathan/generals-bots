@@ -5,9 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node server",
-    "watch": "nodemon server",
+    "watch": "nodemon server > log.txt",
     "build": "cd client/ && yarn install && yarn build",
-    "quick-build": "cd client && yarn build",
     "test": "cd ./server && node index.js 5500",
     "refresh": "yarn install & cd ./server && rm -rf ./node_modules && yarn install & cd ./client && rm -rf ./node_modules && yarn install"
   },

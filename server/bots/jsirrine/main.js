@@ -21,7 +21,7 @@ socket.on("disconnect", () => {
 socket.on("connect", () => {
   console.log("Connected to server");
 
-  // get bot infor from bot.json
+  // get bot information from bot.json
   let raw_data = readFileSync(__dirname + '/bot.json', { encoding: 'utf8' })
   let data = JSON.parse(raw_data);
   const userId = data.BOT_ID;
@@ -80,27 +80,27 @@ socket.on("connect", () => {
 
   socket.on("error_set_username", (error) => {
     if (error) {
-      console.error(error);
+      console.error(`ERROR: ${error}`);
     }
   });
-  
+
   socket.on("game_lost", () => {
     console.log(`${username} lost!`);
     leaveGame();
   });
-  
+
   socket.on("game_won", () => {
     console.log(`${username} won!`);
     leaveGame();
   });
-  
+
   function leaveGame() {
     console.log(`${username} left the game`);
     socket.emit("leave_game");
   }
 
   const bot = new Bot(socket);
-  
+
   socket.on("game_start", (data) => {
     Object.keys(data).forEach(key => {
       bot[key] = data[key];
@@ -108,6 +108,6 @@ socket.on("connect", () => {
     const replayUrl = `http://bot.generals.io/replays/${encodeURIComponent(data.replay_id)}`;
     console.log(`Game starting! The replay will be available after the game at ${replayUrl}`);
   });
-  
+
   socket.on("game_update", bot.update);
 });

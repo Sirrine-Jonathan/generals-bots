@@ -16,8 +16,7 @@ const BotCard = ({bot}) => {
     fetch(`/invite/${dir}/${gameID}`)
       .then((res) => res.json())
       .then((data) => {
-        toast(`${data.url}`);
-        setTimeout(() => window.open(data.url, '_blank'), 2000);
+        toast(<StyledLink href={`${data.url}`} target="_blank" rel="noreferrer">Go to game!</StyledLink>);
       })
   }
   return (
@@ -80,3 +79,13 @@ const StyledButton = styled(Button)`
     padding-left: 5px;
   }
 `;
+
+const StyledLink = styled.a`
+  text-decoration: none;
+  font-size: 16px;
+  color: #000;
+  &:hover {
+    color: #333;
+    text-decoration: underline;
+  }
+`

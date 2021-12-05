@@ -387,7 +387,7 @@ module.exports = class Bot {
   // this function will handle executing the move and refreshing the queue
   // if the queue needs to be continued from a better source.
   executeObjectiveStep = (objective) => {
-    const LOG_OBJECTIVE_STEP = true;
+    const LOG_OBJECTIVE_STEP = false;
     if (LOG_OBJECTIVE_STEP){
       console.log('Running next step on objective', objective);
     }
@@ -452,7 +452,7 @@ module.exports = class Bot {
     this.isOwned,  // Self Owned
   ]) => {
 
-    const LOG_RANDOM_MOVE = true;
+    const LOG_RANDOM_MOVE = false;
 
     // start trying to determine the next move
     let found_move = false;
@@ -711,7 +711,7 @@ module.exports = class Bot {
   }
 
   getBestPerimeter = (includeGeneral = false) => {
-    const LOG_BEST_PERIMETER = true;
+    const LOG_BEST_PERIMETER = false;
     let most_armies = 1;
     let best_tile = null;
     if (LOG_BEST_PERIMETER){

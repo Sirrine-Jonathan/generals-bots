@@ -37,13 +37,21 @@ app.get('/quickplay/:bot_id', (req, res) => {
 })
 
 app.get('/invite/:bot_id/:game_id', (req, res) => {
-  spawn(`cd ./server/bots/${req.params.bot_id} && npm run start custom ${req.params.game_id}`, {
+  spawn(`cd ./server/bots/${req.params.bot_id} && yarn install && yarn start custom ${req.params.game_id}`, {
     stdio: 'inherit',
     shell: true
   });
   res.json({
     url: `http://bot.generals.io/games/${encodeURIComponent(req.params.game_id)}`
   });
+})
+
+app.get('/1v1', (req, res) => {
+  spawn(`cd ./server/bots/${req.params.bot_id} && yarn install && yarn start 1v1`, {
+    stdio: 'inherit',
+    shell: true
+  });
+  res.json({ 'msg': 'joined 1v1' });
 })
 
 app.get('*', (req, res) => {

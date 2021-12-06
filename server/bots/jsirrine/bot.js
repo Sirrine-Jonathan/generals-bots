@@ -40,11 +40,13 @@ module.exports = class Bot {
 
   // BOT CONFIG
   PULL_FROM_GENERAL_MAX = 50;
+  ATTACK_CITIES_MIN = 50;
   ATTACK_CITIES_MAX = 100;
   ATTACK_GENERALS = true;
   ATTACK_CITIES = true;
   STOP_SEARCHING = false;
   PATH_LENGTH_LIMIT = 10;
+  LOWEST_GENERALS = 200;
 
   // Game data from game_start
   playerIndex = null;
@@ -143,6 +145,9 @@ module.exports = class Bot {
     this.perimeter = this.owned
       .filter(tile => this.isPerimeter(tile));
 
+    this.frontline = this.perimeter
+      .filter(tile => this.isFrontline(tile));
+
     // do things at first turn
     if (data.turn === 1){
       this.chat('Good luck, everyone!');
@@ -159,22 +164,6 @@ module.exports = class Bot {
         outer_options: this.getSurroundingTiles(this.current_tile, 2),
         conditions: this.getSurroundingTerrain(this.current_tile),
       });
-
-      // let's set the first object to go to the first tile in the map,
-      // this will be used to test the objective queue
-      /*
-        let first_empty = this.terrain.indexOf(TILE_EMPTY);
-        let surrounding = this.getSurroundingTiles(this.current_tile, 2);
-        console.log('outer surrounding', JSON.stringify(surrounding));
-        let surrounding_terrain = this.getSurroundingTerrain(this.current_tile, 2);
-        console.log('outer terrain', JSON.stringify(surrounding_terrain));
-        let index_of_empty = surrounding_terrain.indexOf(TILE_FOG);
-        console.log('index of empty', index_of_empty);
-        let surrounding_empty = surrounding[index_of_empty];
-        console.log('surrounding_empty', surrounding[index_of_empty]);
-        this.objective_queue.push(new Objective(POSITION_OBJECTIVE, surrounding_empty));
-      */
-
     }
 
     // Check if visible generals are updated
@@ -212,7 +201,7 @@ module.exports = class Bot {
     let cities = this.patch(this.cities, data.cities_diff);
     if (
       JSON.stringify(cities) !== JSON.stringify(this.cities) &&
-      this.game_tick !== 0 &&
+      this.game_tick >= this.ATTACK_CITIES_MIN &&
       this.ATTACK_CITIES
     ){
 
@@ -248,9 +237,7 @@ module.exports = class Bot {
         if (next_objective.queue === null || next_objective.queue.length > 0){
           if (!next_objective.started){
             console.log('attempting chat to express targeting');
-            if (next_objective.type !==  GENERAL_OBJECTIVE){
-              this.chat(`Targeting ${next_objective.type}`);
-            } else {
+            if (next_objective.type ===  GENERAL_OBJECTIVE){
               let general_index = this.generals.indexOf(next_objective.target);
               let username = this.usernames[general_index];
               this.chat(`Targeting ${username}'s general`);
@@ -261,6 +248,8 @@ module.exports = class Bot {
         } else {
           let completed_objective = this.objective_queue.shift()
           console.log('Processed Objective', completed_objective);
+
+          // consider renewing objective immediately
           if (
             completed_objective.complete && (
               completed_objective.type === GENERAL_OBJECTIVE ||
@@ -272,10 +261,40 @@ module.exports = class Bot {
               this.objective_queue.push(new Objective(completed_objective.type, completed_objective.target, null, true));
             }
           }
-          if (this.objective_queue.length <= 0){
-            console.log('attempting chat to express switching to random');
-            //this.next_chat = `Switching to random mode`;
+
+          // set current to random if completed task was position task and
+          // target was general, so we don't move all armies off the general
+          if (
+            completed_objective.type === POSITION_OBJECTIVE &&
+            completed_objective.target === this.general_tile
+          ) {
+            let best = this.getBestPerimeter(false);
+            console.log(`set current_tile to best not general source tile ${best}`);
+            this.current_tile = best;
           }
+
+          if (this.objective_queue.length <= 0){
+            console.log('switching to random');
+            // this.next_chat = `Finished objectives`;
+          }
+        }
+      }
+
+      // if general is below threshold, push a position objective to
+      // start of queue, make sure we don't add it twice though.
+      if (
+        this.armiesAtTile(this.general_tile) <= this.LOWEST_GENERALS &&
+        this.game_tick >= this.PULL_FROM_GENERAL_MAX &&
+        (this.objective_queue.length <= 0 || this.objective_queue[0].target !== this.general_tile)
+      ){
+        console.log('Amping up general tile army');
+        let best = this.getBestSourceTile(false);
+        let armies = this.armiesAtTile(best);
+        if (armies >= 2){
+          this.current_tile = best;
+          this.objective_queue.push(new Objective(POSITION_OBJECTIVE, this.general_tile))
+        } else {
+          console.log('not enough armies in other places to send reinforcements');
         }
       }
 
@@ -289,8 +308,14 @@ module.exports = class Bot {
           let completed_objective = this.objective_queue[0];
           console.log('OBJECTIVE COMPLETE', completed_objective);
           console.log('owned', this.owned);
-          console.log(this.owned[completed_objective.target]);
-          console.log(this.isOwned(completed_objective.target));
+          console.log('current', this.current_tile);
+          console.log('target is playerINdex in terrain', this.terrain[completed_objective.target] === this.playerIndex);
+          console.log('target is owned', this.isOwned(completed_objective.target));
+          if (completed_objective.type === CITY_OBJECTIVE){
+            console.log('city obj finished, terrain is', this.terrain[completed_objective.target]);
+            console.log('cities are', this.cities);
+            console.log('armies at city', this.armies[completed_objective.target]);
+          }
           if (
             this.isOwned(completed_objective.target) &&
             completed_objective.type !== POSITION_OBJECTIVE
@@ -387,7 +412,7 @@ module.exports = class Bot {
   // this function will handle executing the move and refreshing the queue
   // if the queue needs to be continued from a better source.
   executeObjectiveStep = (objective) => {
-    const LOG_OBJECTIVE_STEP = false;
+    const LOG_OBJECTIVE_STEP = true;
     if (LOG_OBJECTIVE_STEP){
       console.log('Running next step on objective', objective);
     }
@@ -452,7 +477,7 @@ module.exports = class Bot {
     this.isOwned,  // Self Owned
   ]) => {
 
-    const LOG_RANDOM_MOVE = false;
+    const LOG_RANDOM_MOVE = true;
 
     // start trying to determine the next move
     let found_move = false;
@@ -463,21 +488,9 @@ module.exports = class Bot {
       }
       let from_index = null;
 
-      // by default, use the current_tile if it's perimeter is not all owned
-      if (this.current_tile && this.isPerimeter(this.current_tile)){
-        from_index = this.current_tile;
-        if (LOG_RANDOM_MOVE) {
-          console.log('continuing from current', this.current_tile);
-        }
-      } else {
-        // otherwise let's just grab a random new tile,
-        // it should be one that we own,
-        // preferably one on the border of our territory
-        from_index = this.getBestPerimeter(this.game_tick < this.PULL_FROM_GENERAL_MAX);
-        if (LOG_RANDOM_MOVE){
-          console.log('starting from random tile', from_index);
-        }
-      }
+      // just use best frontline all the time
+      from_index = this.getBestFrontline(this.game_tick < this.PULL_FROM_GENERAL_MAX);
+      console.log(`Finding random move from tile ${from_index}`);
 
       if (
         // we need to own it to move from here,
@@ -486,11 +499,9 @@ module.exports = class Bot {
         this.armies[from_index] > 1
       ){
         let options = this.getSurroundingTilesSimple(from_index);
+        console.log('options are', options);
+        console.log('option terrain is', this.getSurroundingTerrainSimple(from_index));
         for (let i = 0; i < priority.length; i++){
-          if (LOG_RANDOM_MOVE){
-            console.log('checking options with fn: ' + priority[i]);
-            console.log('passing all options', options);
-          }
 
           // map the options to array indicating
           // whether the options is usable or not,
@@ -642,15 +653,33 @@ module.exports = class Bot {
   isPerimeter = (tile) => {
     // first check we actually own it,
     if (this.terrain[tile] === this.playerIndex){
-      // then check that it at least is not surrounding entirely by tiles we own
-      let surrounding = this.getSurroundingTerrain(tile);
-      let filtered = surrounding.filter(tile => (
-        tile !== this.playerIndex &&
-        tile !== TILE_MOUNTAIN
-      ));
-      return filtered.length > 0;
+      // get surrounding tiles
+      let surrounding = this.getSurroundingTilesSimple(tile);
+      // filter out all tiles that would not make it a perimeter tile
+      let venture_tiles = surrounding.filter(tile => this.isVentureTile(tile));
+      return venture_tiles.length > 0;
     }
     return false;
+  }
+
+  // check if file is frontline tile
+  isFrontline = (tile) => {
+    return this.getSurroundingTerrainSimple(tile)
+        .some(inner_tile => this.isEnemy(inner_tile));
+  }
+
+  isVentureTile = (tile) => {
+    let terrain = this.terrain[tile];
+    return (
+      terrain !== this.player &&
+      terrain !== TILE_MOUNTAIN &&
+      this.isInBounds(tile)
+    );
+  }
+
+  isInBounds = (tile) => {
+    let {x, y} = this.getCoords(tile);
+    return (x >= 0 || x <= this.width || y >= 0 || y <= this.height);
   }
 
   // helper for checking if tile is the general tile
@@ -663,9 +692,6 @@ module.exports = class Bot {
   isEmpty = (tile) => this.terrain[tile] === TILE_EMPTY;
 
   isEnemy = (tile) => {
-    console.log(`isEnemy? ${tile}`);
-    console.log(`this.terrain[tile] !== this.playerIndex | ${this.terrain[tile]} !== ${this.playerIndex}`);
-    console.log(`this.terrain >= 0 | ${this.terrain[tile]} >= 0`);
     return this.terrain[tile] !== this.playerIndex && this.terrain[tile] >= 0
   };
 
@@ -674,7 +700,7 @@ module.exports = class Bot {
 
   // get the tile that will be the best source of armies
   getBestSourceTile = (includeGeneral = false) => {
-    const LOG_BEST_SOURCE = false;
+    const LOG_BEST_SOURCE = true;
     let most_armies = 0;
     let best_tile = null;
     if (LOG_BEST_SOURCE){
@@ -710,35 +736,72 @@ module.exports = class Bot {
     return best_tile;
   }
 
-  getBestPerimeter = (includeGeneral = false) => {
-    const LOG_BEST_PERIMETER = false;
-    let most_armies = 1;
-    let best_tile = null;
-    if (LOG_BEST_PERIMETER){
-      console.log('finding best perimeter, looping through all perimeter: ', this.perimeter);
-    }
-    this.perimeter.forEach((tile) => {
-      if (LOG_BEST_PERIMETER){
-        console.log('checking tile: ', tile);
-      }
-      let armies_at_tile = this.armies[tile];
-      if (
-        (best_tile === null || armies_at_tile > most_armies) &&
-        (includeGeneral || !this.isGeneral(tile))
-      ){
-        if (LOG_BEST_PERIMETER){
-          console.log(`found better tile than ${best_tile}, ${tile}`);
+  getBestFrontline = (includeGeneral = false) => {
+    if (this.frontline.length > 0){
+      let most_armies = 1;
+      let best_tile = null;
+      console.log('finding best frontline, looping through all frontline: ', this.frontline);
+      this.frontline.forEach(tile => {
+        let armies_at_tile = this.armiesAtTile(tile);
+        console.log(`armies at frontline ${tile}, ${armies_at_tile}`);
+        if (best_tile === null || armies_at_tile > most_armies){
+          console.log(`found better tile frontline tile than ${best_tile}, ${tile}`);
+          best_tile = tile;
+          most_armies = armies_at_tile;
         }
-        best_tile = tile;
-        most_armies = armies_at_tile;
+      })
+
+      if (best_tile === null){
+        console.log('no front line with sufficient armies, getting best perimeter');
+        best_tile = this.getBestPerimeter(includeGeneral);
       }
-    })
 
-    if (best_tile === null){
-      best_tile = this.getBestSourceTile(includeGeneral || this.ticks_til_payday >= 10);
+      return best_tile;
+    } else {
+      console.log('no front line, getting best perimeter');
+      return this.getBestPerimeter(includeGeneral);
     }
+  }
 
-    return best_tile;
+
+  getBestPerimeter = (includeGeneral = false) => {
+    const LOG_BEST_PERIMETER = true;
+    if (this.perimeter.length > 0){
+      let most_armies = 1;
+      let best_tile = null;
+      if (LOG_BEST_PERIMETER){
+        console.log('finding best perimeter, looping through all perimeter: ', this.perimeter);
+      }
+      this.perimeter.forEach((tile) => {
+        let armies_at_tile = this.armies[tile];
+        if (LOG_BEST_PERIMETER){
+          console.log(`armies at perimeter ${tile}, ${armies_at_tile}`);
+        }
+        if (
+          (best_tile === null || armies_at_tile > most_armies) &&
+          (includeGeneral || !this.isGeneral(tile))
+        ){
+          if (LOG_BEST_PERIMETER){
+            console.log(`found better tile than ${best_tile}, ${tile}`);
+          }
+          if (this.isGeneral(tile)){
+            console.log(`best tile ${tile} is general`);
+          }
+          best_tile = tile;
+          most_armies = armies_at_tile;
+        }
+      })
+
+      if (best_tile === null){
+        console.log('no tile on perimeter with sufficient armies, finding best inland source');
+        best_tile = this.getBestSourceTile(includeGeneral);
+      }
+
+      return best_tile;
+    } else {
+      console.log('no permiter, getting best source tile');
+      return this.getBestSourceTile(includeGeneral);
+    }
   }
 
   getClosest = (current_tile, tile_list) => {
@@ -802,7 +865,7 @@ module.exports = class Bot {
   }
 
   addPathDepthFirstStep = (next, finish, path, visited, addPathDepthFirst) => {
-    const LOG_ADD_PATH_STEP = false;
+    const LOG_ADD_PATH_STEP = true;
 
     if (this.STOP_SEARCHING){
       return;

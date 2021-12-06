@@ -12,6 +12,13 @@ const BotCard = ({bot}) => {
         window.open(data.url, '_blank');
       });
   }
+  const versus = (dir) => {
+    fetch(`/versus`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log(data);
+      });
+  }
   const invite = (dir) => {
     fetch(`/invite/${dir}/${gameID}`)
       .then((res) => res.json())
@@ -32,6 +39,12 @@ const BotCard = ({bot}) => {
           <StyledButton primary fluid onClick={() => quickPlay(bot.dir)}>
             <Icon name="game" />
             <div>Quick Play</div>
+          </StyledButton>
+        </Row>
+        <Row>
+          <StyledButton primary fluid onClick={() => versus(bot.dir)}>
+            <Icon name="game" />
+            <div>1v1</div>
           </StyledButton>
         </Row>
         <Row>

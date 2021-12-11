@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node server",
-    "watch": "nodemon server > log.txt",
+    "watch": "nodemon server > logs/$(date +%Y%m%d-%H%M%S).txt",
     "build": "cd client/ && yarn install && yarn build",
     "test": "cd ./server && node index.js 5500",
+    "delog": "rm -rf ./logs/*",
     "refresh": "yarn install & cd ./server && rm -rf ./node_modules && yarn install & cd ./client && rm -rf ./node_modules && yarn install"
   },
   "repository": {

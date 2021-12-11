@@ -41,12 +41,12 @@ const BotCard = ({bot}) => {
             <div>Quick Play</div>
           </StyledButton>
         </Row>
-        <Row>
+        {/* <Row>
           <StyledButton primary fluid onClick={() => versus(bot.dir)}>
             <Icon name="game" />
             <div>1v1</div>
           </StyledButton>
-        </Row>
+        </Row> */}
         <Row>
           <StyledInput type="text" value={gameID} placeholder="Game ID" onChange={(e) => {setGameID(e.target.value)}}/>
           <Button secondary onClick={() => invite(bot.dir)}>Invite</Button>

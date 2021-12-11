@@ -31,10 +31,10 @@ module.exports = class Bot {
   PULL_FROM_GENERAL_MAX = 50;
 
   // The earliest game tick that the bot will start to attack cities
-  ATTACK_CITIES_MIN = 50;
+  ATTACK_CITIES_MIN = 100;
 
   // The latest game tick that the bot will continue to attack cities
-  ATTACK_CITIES_MAX = 200;
+  ATTACK_CITIES_MAX = 2000;
 
   // whether or not to attack enemy generals
   ATTACK_GENERALS = true;
@@ -47,7 +47,7 @@ module.exports = class Bot {
 
   // The lowest we'll allow the general tile to get before resupplying armies to the general tile
   // Resupplies will only happen after the PULL_FROM_GENERAL_MAX tick is surpassed
-  LOWEST_GENERALS = 50;
+  LOWEST_GENERALS = 200;
 
   // The closest we'll let an enemy get to our general before we start sending home reinforcements
   CLOSENESS_LIMIT = 50;
@@ -257,7 +257,11 @@ module.exports = class Bot {
 
 
       // Only focus on new visible cities before a specified game tick
-      if (this.game_tick < this.ATTACK_CITIES_MAX && unowned_cities.length > 0){
+      if (
+        this.game_tick < this.ATTACK_CITIES_MAX &&
+        unowned_cities.length > 0 &&
+        this.armiesAtTile(this.general_tile) > this.LOWEST_GENERALS // enough armies at general to be attacking cities
+      ){
 
         // find the closest city
         let closest = this.getClosest(this.current_tile ?? this.getBestSourceTile(), unowned_cities);
@@ -730,7 +734,11 @@ module.exports = class Bot {
             this.armies[from_index] <= 2
           ){
             console.log(`Targeting player ${this.usernames[taking_type]}`);
-            this.objective_queue.push(new Objective(POSITION_OBJECTIVE, options[option_index], null, true));
+            if (this.armiesAtTile(this.general_tile) > this.LOWEST_GENERALS){
+              this.objective_queue.unshift(new Objective(POSITION_OBJECTIVE, options[option_index], null, true));
+            } else {
+              this.objective_queue.push(new Objective(POSITION_OBJECTIVE, options[option_index], null, true));
+            }
           }
 
           next_move(from_index);
@@ -1098,12 +1106,6 @@ module.exports = class Bot {
     let visited = [];
     let paths = [];
     const addPathDepthFirst = (p) => {
-      for (let i = 0; i < p.length; i++){
-        if (this.terrain[p[i]] === TILE_FOG_OBSTACLE){
-          console.log('caught bad path when trying to add');
-          return;
-        }
-      }
       console.log(`found new path ${JSON.stringify(p)}`);
       paths = [...paths, p];
     }
@@ -1117,6 +1119,8 @@ module.exports = class Bot {
     console.log(`index_of_shortest = ${index_of_shortest}`);
     let shortest_path = paths[index_of_shortest];
     console.log(`shortest_path = ${JSON.stringify(shortest_path)}`);
+    let path_terrains = shortest_path?.map(tile => this.terrain[tile]);
+    console.log(`shortest_path terrains ${path_terrains}`);
 
     return shortest_path ?? [];
   }
@@ -1157,7 +1161,7 @@ module.exports = class Bot {
       return;
     }
 
-    if (this.terrain[next] === TILE_FOG_OBSTACLE){
+    if (this.terrain[next] === TILE_MOUNTAIN){
       if (LOG_ADD_PATH_STEP) {
         console.log(`${next} is ${this.terrain[next]}`);
       }

@@ -42,7 +42,8 @@ module.exports = class Bot {
   ATTACK_CITIES = true;
 
   // The most we'll look into a path before considering it too long to continue searching
-  PATH_LENGTH_LIMIT = null;
+  DEFAULT_PATH_LENGTH_LIMIT = 20;
+  PATH_LENGTH_LIMIT = this.DEFAULT_PATH_LENGTH_LIMIT;
 
   // The lowest we'll allow the general tile to get before resupplying armies to the general tile
   // Resupplies will only happen after the PULL_FROM_GENERAL_MAX tick is surpassed
@@ -1111,7 +1112,7 @@ module.exports = class Bot {
   /*
     Depth First Search for finding Paths
   */
-  getPathDepthFirst = (start, finish, targetData) => {
+  getPathDepthFirst = (start, finish) => {
     let path = [];
     let visited = [];
     let paths = [];
@@ -1135,7 +1136,7 @@ module.exports = class Bot {
     let path_terrains = shortest_path?.map(tile => this.terrain[tile]);
     console.log(`shortest_path terrains ${path_terrains}`);
 
-    this.PATH_LENGTH_LIMIT = null;
+    this.PATH_LENGTH_LIMIT = this.DEFAULT_PATH_LENGTH_LIMIT;
     return shortest_path ?? [];
   }
 
@@ -1207,14 +1208,15 @@ module.exports = class Bot {
   }
 
   getPathBreadthFirst = (start, finish) => {
-    let paths = [[start]];
     const addToPaths = (path) => {
       paths.push(path);
     }
-    let shortest_path = this.getPathBreadthFirstStep(paths, finish, addToPaths);
+    let path = [start];
+    let shortest_path = this.getPathBreadthFirstStep(path, finish, addToPaths);
+    return shortest_path;
   }
 
-  getPathBreadthFirstStep = (paths, index, finish) => {
+  getPathBreadthFirstStep = (path, index, finish) => {
     let latest_step = path[path.length - 1];
     if (latest_step === finish){
       return path;

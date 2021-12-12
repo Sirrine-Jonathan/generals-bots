@@ -13,7 +13,8 @@ export default Mosaic;
 const StyledMosaic = styled.div`
   padding-top: 30px;
   display: flex;
+  flex-wrap: wrap;
   & .ui.card {
-    margin: 0 1em;
+    margin: 1em;
   }
 `;

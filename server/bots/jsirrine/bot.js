@@ -42,7 +42,7 @@ module.exports = class Bot {
   ATTACK_CITIES = true;
 
   // The most we'll look into a path before considering it too long to continue searching
-  PATH_LENGTH_LIMIT = 10;
+  PATH_LENGTH_LIMIT = null;
 
   // The lowest we'll allow the general tile to get before resupplying armies to the general tile
   // Resupplies will only happen after the PULL_FROM_GENERAL_MAX tick is surpassed
@@ -1115,7 +1115,10 @@ module.exports = class Bot {
     let path = [];
     let visited = [];
     let paths = [];
-    const addPathDepthFirst = (p) => {
+    const addPathDepthFirst = (p, newLimit = false) => {
+      if (newLimit){
+        this.PATH_LENGTH_LIMIT = p.length;
+      }
       console.log(`found new path ${JSON.stringify(p)}`);
       paths = [...paths, p];
     }
@@ -1132,13 +1135,14 @@ module.exports = class Bot {
     let path_terrains = shortest_path?.map(tile => this.terrain[tile]);
     console.log(`shortest_path terrains ${path_terrains}`);
 
+    this.PATH_LENGTH_LIMIT = null;
     return shortest_path ?? [];
   }
 
-  addPathDepthFirstStep = (next, finish, path, visited, addPathDepthFirst, targetData) => {
+  addPathDepthFirstStep = (next, finish, path, visited, addPathDepthFirst) => {
     const LOG_ADD_PATH_STEP = false;
 
-    if (path.length > this.PATH_LENGTH_LIMIT){
+    if (path.length > this.PATH_LENGTH_LIMIT && this.PATH_LENGTH_LIMIT !== null){
       if (LOG_ADD_PATH_STEP){
         console.log('Stopped searching path due to length limit');
       }
@@ -1148,7 +1152,11 @@ module.exports = class Bot {
     if (next === finish){
       path = [...path, next];
       visited = [...visited, next];
-      addPathDepthFirst(path);
+      if (this.PATH_LENGTH_LIMIT === null || path.length < this.PATH_LENGTH_LIMIT){
+        addPathDepthFirst(path, true);
+      } else {
+        addPathDepthFirst(path);
+      }
       return;
     }
 

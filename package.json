@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node server",
-    "watch": "nodemon server > logs/$(date +%Y%m%d-%H%M%S).txt",
+    "watch": "run-script-os",
+    "watch:macos": "nodemon server > logs/$(date +%Y%m%d-%H%M%S).txt",
+    "watch:windows": "nodemon server > logs/%date:~10,4%%date:~7,2%%date:~4,2%_%time:~0,2%%time:~3,2%.txt",
+    "watch:default": "nodemon server",
     "build": "cd client/ && yarn install && yarn build",
     "test": "cd ./server && node index.js 5500",
     "delog": "rm -rf ./logs/*",
@@ -26,6 +29,7 @@
     "express": "^4.17.1"
   },
   "devDependencies": {
-    "nodemon": "^2.0.15"
+    "nodemon": "^2.0.15",
+    "run-script-os": "^1.1.6"
   }
 }

@@ -2,6 +2,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-plusplus */
 const io = require("socket.io-client");
+const nodemailer = require("nodemailer");
 const Bot = require('./bot.js');
 const { readFileSync } = require('fs');
 

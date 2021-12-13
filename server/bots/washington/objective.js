@@ -1,11 +1,14 @@
 module.exports = class Objective {
   constructor(type, target, queue = null, started = false) {
-    this.queue = queue;
     this.type = type;
     this.target = target;
-    this.complete = false;
+    this.queue = queue;
     this.started = started;
+    this.complete = false;
     this.initial_takeover_requirement;
+    this.take_over_requirement;
+    this.tick_created;
+    this.tick_renewed;
   }
 
   peakNextMove = () => {

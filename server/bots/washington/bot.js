@@ -1,5 +1,6 @@
 var events = require('events');
 const Objective = require('./objective.js');
+const fs = require('fs');
 
 // Terrain Constants.
 // Any tile with a nonnegative value is owned by the player corresponding to its value.
@@ -21,6 +22,8 @@ const CITY_OBJECTIVE = "CITY";
 const POSITION_OBJECTIVE = "POSITION";
 
 module.exports = class Bot {
+  path = "./logs/"
+  filename = 'log.txt';
 
   /*
     Configure the bots behaviour
@@ -90,16 +93,34 @@ module.exports = class Bot {
   // initialize the socket for emiting bot events
   constructor(socket){
 
+    // set the socket
     if (socket){
       this.socket = socket;
     } else {
       this.socket = new events.EventEmitter();
     }
+    var now = new Date();
+    this.filename = 'LOG_' + now.getFullYear() + "-"+ now.getMonth() + "-" + now.getDate() + 
+    '_' + now.getHours() + '-' + now.getMinutes() + '.txt';
   }
 
   // chat helper
   chat = (msg) => {
     this.socket.emit("chat_message", this.chat_room, msg);
+  }
+
+  // log function for debugging
+  log = function(){
+    if (process.env.LOG){
+      let arr = [...arguments].map(param => {
+        if (typeof param === 'object'){
+          return JSON.stringify(param, null, 2);
+        } else {
+          return param;
+        }
+      })
+      fs.appendFileSync(this.path + this.filename, arr.join(' ') + '\n');
+    }
   }
 
   // getter for the socket or event emitter
@@ -136,17 +157,18 @@ module.exports = class Bot {
     return out;
   }
 
-  // runs twice every game tick
-  update = (data) => {
-    console.log('===========================');
-    console.log(`GAME TICK ${data.turn / 2}`);
+  // gather all useful data from all we are give from the game server
+  gatherIntel = (data) => {
+    this.log("using data given from game server to GATHER INTEL");
 
     // set the bots index
     if (this.playerIndex === null){
       this.playerIndex = data.playerIndex;
     }
+
     // game timing
-    this.game_tick = Math.ceil(data.turn / 2);
+    this.internal_tick = data.turn / 2;
+    this.game_tick = Math.ceil(this.internal_tick);
     this.ticks_til_payday = 25 - this.game_tick % 25;
 
     // update map variables
@@ -158,17 +180,25 @@ module.exports = class Bot {
     this.terrain = this.map.slice(this.size + 2, this.size + 2 + this.size);
 
     // all the enemy tiles
-    this.enemies = this.terrain
+    this.log('ENEMIES');
+    let newEnemies = this.terrain
       .map((tile, idx) => {
-        if (this.isEnemy(tile)){
+        if (this.isEnemy(idx)){
           return idx;
         }
         return null;
       })
       .filter(tile => tile !== null);
+    if (JSON.stringify(this.enemies) !== JSON.stringify(newEnemies)){
+      this.log('recognized enemies has changed');
+    }
+    this.enemies = newEnemies;
+    this.log('enemies length', this.enemies.length);
+    this.log('enemies', this.enemies);
 
     // all the tiles we own
-    this.owned = this.terrain
+    this.log('OWNED');
+    let newOwned = this.terrain
       .map((tile, idx) => {
         if (tile === this.playerIndex){
           return idx;
@@ -176,16 +206,57 @@ module.exports = class Bot {
         return null
       })
       .filter(tile => tile !== null);
+    if (JSON.stringify(this.owned) !== JSON.stringify(newOwned)){
+      this.log('ownership has changed');
+    }
+    this.owned = newOwned;
+    this.log('owned length', this.owned.length);
+    this.log('owned', this.owned);
+
+
+    // check left moves from all tiles for horizontal border cross
+    const convertArrayToObject = (array) => {
+      const initialValue = {};
+      return array.reduce((elem, idx) => {
+        return {
+          [idx]: elem,
+        };
+      }, initialValue);
+    };
+    let left_moves  = convertArrayToObject(this.owned.map(tile => this.willMoveCrossHorizontalBorder(tile, tile - 1)));
+    let right_moves = convertArrayToObject(this.owned.map(tile => this.willMoveCrossHorizontalBorder(tile, tile + 1)));
+    this.log({ left_moves, right_moves});
 
     // of the tiles we own, only the ones on the perimeter
-    this.perimeter = this.owned
+    this.log('PERIMETER');
+    let newPerimeter = this.owned
       .filter(tile => this.isPerimeter(tile));
+    if (JSON.stringify(this.perimeter) !== JSON.stringify(newPerimeter)){
+      this.log('perimeter has changed');
+    }
+    this.perimeter = newPerimeter;
+    this.log('perimeter length', this.perimeter.length);
+    this.log('perimeter', this.perimeter);
 
-    // of the perimter tiles, only the ones that border an enemy
-    this.frontline = this.owned
+    // of the tiles we own, only the ones that border an enemy
+    this.log('FRONTLINE');
+    let newFrontline = this.owned
       .filter(tile => this.isFrontline(tile));
-    console.log('frontline length', this.frontline.length);
-    console.log('frontline', this.frontline);
+    if (JSON.stringify(this.frontline) !== JSON.stringify(newFrontline)){
+      this.log('frontline has changed');
+    }
+    this.frontline = newFrontline;
+    this.log('frontline length', this.frontline.length);
+    this.log('frontline', this.frontline);
+  }
+
+  // runs twice every game tick
+  update = (data) => {
+    this.log('=============UPDATE==============');
+    this.log(`GAME TICK ${data.turn / 2}`);
+    this.log('=================================');
+
+    this.gatherIntel(data);
 
     // do things at first turn
     if (data.turn === 1){
@@ -200,7 +271,7 @@ module.exports = class Bot {
       this.current_coords = this.getCoords(this.current_tile);
 
       // why not dump a starting report
-      console.log({
+      this.log('STARTING REPORT', {
         general: this.general_tile,
         owned: this.owned,
         current: `${this.current_tile}, (${this.current_coords.x}, ${this.current_coords.y})`,
@@ -219,7 +290,8 @@ module.exports = class Bot {
     ){
 
       // log things
-      console.log({ generals: data.generals });
+      this.log("GENERALS has been updated");
+      this.log({ generals: data.generals });
 
       // filter out bot itself
       let generals = data.generals.filter(general => general !== -1 && general !== this.general_tile);
@@ -229,13 +301,15 @@ module.exports = class Bot {
 
         // find the closest general
         let closest = this.getClosest(this.current_tile ?? this.getBestSourceTile(), generals);
-        console.log({ closest });
+        this.log({ closest });
 
         // set objective, clear queue to take this as highest priority
         if (this.objective_queue.length > 0 && this.objective_queue[0].type !== GENERAL_OBJECTIVE){
           this.objective_queue = [];
-          this.objective_queue.unshift(new Objective(GENERAL_OBJECTIVE, closest));
-          let chat_text = `Attacking ${this.usernames[this.terrain[closest]]}'s general'`;
+          let newObj = new Objective(GENERAL_OBJECTIVE, closest);
+          newObj.tick_created = this.internal_tick;
+          this.objective_queue.unshift(newObj);
+          let chat_text = `Attacking ${this.usernames[this.terrain[closest]]}'s general!`;
           if (this.last_chat !== chat_text){
             this.chat(chat_text);
             this.last_chat = chat_text;
@@ -259,7 +333,8 @@ module.exports = class Bot {
       let unowned_cities = cities.filter(city => city !== TILE_EMPTY);
 
       // log things
-      console.log({ all_cities: cities, all_unowned_cities: unowned_cities });
+      this.log("CITIES has been updated");
+      this.log({ all_cities: cities, all_unowned_cities: unowned_cities });
 
 
       // Only focus on new visible cities before a specified game tick
@@ -271,15 +346,17 @@ module.exports = class Bot {
 
         // find the closest city
         let closest = this.getClosest(this.current_tile ?? this.getBestSourceTile(), unowned_cities);
-        console.log({ closest });
+        this.log({ closest });
 
-        this.objective_queue.push(new Objective(CITY_OBJECTIVE, closest));
+        let newObj = new Objective(CITY_OBJECTIVE, closest)
+        newObj.tick_created = this.internal_tick;
+        this.objective_queue.push(newObj);
       }
     }
     this.cities = cities;
 
     if (this.isFullyStretched()){
-      console.log('skipping move since we are fully stretched');
+      this.log('skipping move since we are fully stretched');
       return;
     }
 
@@ -305,6 +382,8 @@ module.exports = class Bot {
   }
 
   doNextMove = (data) => {
+    this.log('Using gathered intel to FIND NEXT MOVE');
+
     // find the next objective
     let objective;
     while (objective === undefined && this.objective_queue.length > 0){
@@ -312,7 +391,7 @@ module.exports = class Bot {
       // optimistically pull the next one from the queue
       let next_objective = this.objective_queue[0];
 
-      // if queue is not empty or null, we've found our current objective
+      // if queue is null or not null but empty, we've found our current objective
       if (next_objective.queue === null || next_objective.queue.length > 0){
 
         // if this objective has not yet been started
@@ -324,6 +403,9 @@ module.exports = class Bot {
             let general_index = this.generals.indexOf(next_objective.target);
             let username = this.usernames[general_index];
             this.chat(`Targeting ${username}'s general`);
+            this.log(`Targeting ${username}'s general at ${next_objective.target}`);
+          } else {
+            this.log(`Targeting ${next_objective.type} at ${next_objective.target}`);
           }
 
           // set the 'started' flag to true, so we don't repeat this stuff
@@ -337,23 +419,18 @@ module.exports = class Bot {
       } else {
 
         let completed_objective = this.objective_queue.shift()
-        console.log('Processed Objective', completed_objective);
+        this.log('Processed Objective', completed_objective);
 
         // consider renewing objective immediately
-        if (
-          completed_objective.complete && // this is a flag that gets set to true during the queue's last step
-          (
-            completed_objective.type === GENERAL_OBJECTIVE ||
-            completed_objective.type === CITY_OBJECTIVE ||
-            (completed_objective.type === POSITION_OBJECTIVE && this.isEnemy(completed_objective.target))
-          )
-        ){
+        if (completed_objective.complete && !this.isOwned(completed_objective.target)){
 
           // only renew the objective if the target is not now owned
           // this is part of why this logic needs to happen on the tick after the last queue's move
           if (!this.isOwned(completed_objective.target)) {
-            console.log('renewing objective', completed_objective);
-            this.objective_queue.push(new Objective(completed_objective.type, completed_objective.target, null, true));
+            this.log('renewing objective', completed_objective);
+            let newObj = new Objective(completed_objective.type, completed_objective.target, null, true);
+            newObj.tick_created = this.internal_tick;
+            this.objective_queue.push(newObj);
           }
         }
 
@@ -364,14 +441,14 @@ module.exports = class Bot {
           completed_objective.target === this.general_tile
         ) {
           let best = this.getBestSourceTile(false);
-          console.log(`set current_tile to best not general source tile ${best}`);
+          this.log(`set current_tile to best not general source tile ${best}`);
           this.current_tile = best;
         }
 
         // Do something once the objective queue has been emptied
         if (this.objective_queue.length <= 0){
           // ... do thing ...
-          console.log("OBJECTIVE QUEUE IS EMPTY");
+          this.log("OBJECTIVE QUEUE IS EMPTY");
         }
       }
     }
@@ -387,29 +464,31 @@ module.exports = class Bot {
         // as commonly done in the early game
         this.game_tick >= this.PULL_FROM_GENERAL_MAX &&
 
-        // only start reinforcing if either queue objective queue is empty or
+        // only start reinforcing if either the queue objective queue is empty or
         // the current objective's target is the general (meaning reinforcements are already underway)
         (this.objective_queue.length <= 0 || this.objective_queue[0].target !== this.general_tile)
       ) ||
       (
         // there are enemies that can beat us within our comfort zone
-        this.closeEnemyIsStronger()
+        this.closeEnemyIsStronger() &&
+        (this.objective_queue.length <= 0 || this.objective_queue[0].target !== this.general_tile)
       )
     ){
-      console.log('Reinforcing general');
+      this.log('Reinforcing general');
       let best = this.getBestSourceTile(false); // false, so we don't include the general as a source
       let armies = this.armiesAtTile(best);
       if (armies >= 2){
         this.current_tile = best;
-        this.objective_queue.push(new Objective(POSITION_OBJECTIVE, this.general_tile))
+        let newObj = new Objective(POSITION_OBJECTIVE, this.general_tile);
+        newObj.tick_created = this.internal_tick;
+        this.objective_queue.push(newObj);
       } else {
-        console.log('not enough armies in other places to send reinforcements');
+        this.log('not enough armies in other places to send reinforcements');
       }
     }
 
     // if there's no objective, let's resort to doing a random move,
     if (!objective){
-      console.log(`Random move at tick ${data.turn / 2}`);
       this.randomMove(data);
 
     // otherwise, let's begin processing the next move in the current objective's queue
@@ -422,20 +501,20 @@ module.exports = class Bot {
       if (updated_objective.complete){
 
         let completed_objective = this.objective_queue[0];
-        console.log('OBJECTIVE COMPLETE', completed_objective);
+        this.log('OBJECTIVE COMPLETE', completed_objective);
 
         // logs for debugging recognizing if the completed target is also owned
-        console.log('owned', this.owned);
-        console.log('current', this.current_tile);
-        console.log('tarrain at target', this.terrain[completed_objective.target]);
-        console.log('target is playerIndex in terrain', this.terrain[completed_objective.target] === this.playerIndex);
-        console.log('target is owned', this.isOwned(completed_objective.target));
+        this.log('owned', this.owned);
+        this.log('current', this.current_tile);
+        this.log('tarrain at target', this.terrain[completed_objective.target]);
+        this.log('target is playerIndex in terrain', this.terrain[completed_objective.target] === this.playerIndex);
+        this.log('target is owned', this.isOwned(completed_objective.target));
 
         // more debug logs for cities
         if (completed_objective.type === CITY_OBJECTIVE){
-          console.log('city obj finished, terrain is', this.terrain[completed_objective.target]);
-          console.log('cities are', this.cities);
-          console.log('armies at target city', this.armies[completed_objective.target]);
+          this.log('city obj finished, terrain is', this.terrain[completed_objective.target]);
+          this.log('cities are', this.cities);
+          this.log('armies at target city', this.armies[completed_objective.target]);
         }
 
         // chat tile capture for position objectives
@@ -452,7 +531,7 @@ module.exports = class Bot {
       } else if (updated_objective.queue.length <= 0) {
 
         // in this case, we'll resort to a random move
-        console.log(`Random move at tick ${data.turn / 2}`);
+        this.log(`Random move at tick ${data.turn / 2}`);
         this.randomMove(data);
       }
     }
@@ -462,15 +541,16 @@ module.exports = class Bot {
   // this function will handle executing the move and refreshing the queue
   // if the queue needs to be continued from a better source.
   executeObjectiveStep = (objective) => {
+    this.log('running next MOVE ON OBJECTIVE');
     const LOG_OBJECTIVE_STEP = true;
     if (LOG_OBJECTIVE_STEP){
-      console.log('Running next step on objective', objective);
+      this.log('Running next step on objective', objective);
     }
 
     // return objective if queue is empty
     if (objective.queue !== null && objective.queue.length <= 0) {
       if (LOG_OBJECTIVE_STEP){
-        console.log('Objective has empty queue');
+        this.log('Objective has empty queue');
       }
       return objective;
     }
@@ -481,6 +561,7 @@ module.exports = class Bot {
         this.armiesAtTile(this.current_tile) <= 1
       ) && objective.queue !== null && objective.queue.length >= 2
     ) {
+      this.log('setting current tile to next move');
       this.current_tile = objective.getNextMove();
     }
 
@@ -489,25 +570,25 @@ module.exports = class Bot {
       this.armiesAtTile(this.current_tile) <= 1
     ) {
       if (LOG_OBJECTIVE_STEP){
-        console.log('refreshing/initializing queue');
+        this.log('refreshing/initializing queue');
         if (objective.queue === null){
-          console.log('because queue is null');
+          this.log('because queue is null');
         }
         if (this.armiesAtTile(this.current_tile) <= 1){
-          console.log(`because the current tile ${this.current_tile} has too few armies ${this.armiesAtTile(this.current_tile)}`)
+          this.log(`because the current tile ${this.current_tile} has too few armies ${this.armiesAtTile(this.current_tile)}`)
         }
       }
       let best_source = this.getBestSourceTile(this.game_tick < this.PULL_FROM_GENERAL_MAX);
       if (LOG_OBJECTIVE_STEP){
         let c = this.getCoords(best_source);
-        console.log(`using best source tile ${best_source} (${c.x}, ${c.y})`);
+        this.log(`using best source tile ${best_source} (${c.x}, ${c.y})`);
         if (objective.queue === null){
-          console.log('objective queue found null, needs refreshing');
+          this.log('objective queue found null, needs refreshing');
         } else if (!this.current_tile){
-          console.log('current tile not found, objective queue needs refreshing');
+          this.log('current tile not found, objective queue needs refreshing');
         } else {
-          console.log(`current tile ${this.current_tile}, armies = ${this.armiesAtTile(this.current_tile)}`);
-          console.log('no armies at current tile, queue needs refreshing');
+          this.log(`current tile ${this.current_tile}, armies = ${this.armiesAtTile(this.current_tile)}`);
+          this.log('no armies at current tile, queue needs refreshing');
         }
       }
       objective.queue = this.getPathDepthFirst(best_source, objective.target);
@@ -517,22 +598,22 @@ module.exports = class Bot {
     // check if we can just continue on the current queue
     if (this.armiesAtTile(this.current_tile) > 1){
       if (LOG_OBJECTIVE_STEP){
-        console.log(`current tile ${this.current_tile} is set and has armies`);
+        this.log(`current tile ${this.current_tile} is set and has armies`);
       }
       let next_tile = objective.queue.shift();
       if (LOG_OBJECTIVE_STEP){
-        console.log('next tile', next_tile);
+        this.log('next tile', next_tile);
       }
       if (next_tile === this.current_tile){
         next_tile = objective.queue.shift();
         if (LOG_OBJECTIVE_STEP){
-          console.log('next tile is current, get next tile', next_tile);
-          console.log('next tile', next_tile);
+          this.log('next tile is current, get next tile', next_tile);
+          this.log('next tile', next_tile);
         }
       }
 
       if (next_tile === objective.target){
-        console.log('Marking objective as complete, processing completion on next tick');
+        this.log('Marking objective as complete, processing completion on next tick');
         objective.complete = true;
       }
       this.attack(this.current_tile, next_tile);
@@ -545,17 +626,17 @@ module.exports = class Bot {
   compound = (fn, level, ...rest) => {
     const LOG_COMPOUND = false;
     if (LOG_COMPOUND){
-      console.log(`compound function ${fn}`);
+      this.log(`compound function ${fn}`);
     }
     let res = fn(...rest);
     if (LOG_COMPOUND){
-      console.log(`compound level 1: ${res}`);
+      this.log(`compound level 1: ${res}`);
     }
     if (level > 1){
       for (let i = 2; i <= level; i++){
         res = fn(res);
         if (LOG_COMPOUND){
-          console.log(`compound level ${i}: ${res}`);
+          this.log(`compound level ${i}: ${res}`);
         }
       }
     }
@@ -597,7 +678,7 @@ module.exports = class Bot {
     this.isEmpty, // Empty
     this.isOwned,  // Self Owned
   ]) => {
-
+    this.log(`Finding RANDOM MOVE`);
     const LOG_RANDOM_MOVE = true;
 
     // start trying to determine the next move
@@ -606,7 +687,7 @@ module.exports = class Bot {
     let found_move_attempt = 0;
     while(!found_move && !set_queue_abandon_loop){
       if (LOG_RANDOM_MOVE){
-        console.log(`finding next move, attempt #${++found_move_attempt}`);
+        this.log(`finding next move, attempt #${++found_move_attempt}`);
       }
       let from_index = null;
 
@@ -614,17 +695,50 @@ module.exports = class Bot {
       from_index = this.getBestFrontline(this.game_tick < this.PULL_FROM_GENERAL_MAX, false);
 
       /*
+        If from_index is not frontline but is permieter, and there are perimeters,
+        then let's move troops to the weak frontline we've detected.
+      */
+      if (
+        !this.isFrontline(from_index) &&
+        this.isPerimeter(from_index) &&
+        this.frontline > 0
+      ){
+        this.log('next random starting is not frontline, and there are frontlines that must be low on armies');
+
+        // schedule objective to go towards perimeter
+        let best_source = this.getBestSourceTile(this.game_tick < this.PULL_FROM_GENERAL_MAX);
+        let closest_perimeter = this.getClosestFrontline(best_source);
+
+        // check if it really is a perimeter, because getRandomPerimeter falls back to
+        // returning a random owned tile
+        if (this.isFrontline(closest_perimeter)){
+          // if it is a perimeter, let's add the objective
+          this.log(`Heading towards frontline ${closest_perimeter}`);
+          set_queue_abandon_loop = true;
+          let queue = this.getPathDepthFirst(best_source, closest_perimeter);
+
+          let newObj = new Objective(POSITION_OBJECTIVE, closest_perimeter, queue, false);
+          newObj.tick_created = this.internal_tick;
+          this.objective_queue.push(newObj);
+
+          this.doNextMove(data);
+          break;
+        }
+
+        // otherwise we continue with our from_index set by the 'getBestFrontline' call
+      }
+
+      /*
         If from_index is neither frontline, nor perimeter (best source),
         but there are perimeters, just without armies, then let's bring our armies to the front
       */
-      if (
+      else if (
         !this.isPerimeter(from_index) &&
         !this.isFrontline(from_index) &&
         this.perimeter.length > 0 &&
         this.game_tick > 1
       ){
-        console.log('tick', this.game_tick);
-        console.log('next random starting is not perimeter, and there are perimeters that must be low on armies');
+        this.log('next random starting is not perimeter, and there are perimeters that must be low on armies');
 
         // schedule objective to go towards perimeter
         let best_source = this.getBestSourceTile(this.game_tick < this.PULL_FROM_GENERAL_MAX);
@@ -634,20 +748,21 @@ module.exports = class Bot {
         // returning a random owned tile
         if (this.isPerimeter(closest_perimeter)){
           // if it is a perimeter, let's add the objective
-          console.log(`Heading towards perimeter ${closest_perimeter}`);
+          this.log(`Heading towards perimeter ${closest_perimeter}`);
           set_queue_abandon_loop = true;
           let queue = this.getPathDepthFirst(best_source, closest_perimeter);
-          this.objective_queue.push(new Objective(POSITION_OBJECTIVE, closest_perimeter, queue, false));
 
-          // TODO maybe start the first move so we don't miss a tick?
-          this.doNextMove(data);
+          let newObj = new Objective(POSITION_OBJECTIVE, closest_perimeter, queue, false);
+          newObj.tick_created = this.internal_tick;
+          this.objective_queue.push(newObj);
+
           break;
         }
 
         // otherwise we continue with our from_index set by the 'getBestFrontline' call
       }
 
-      console.log(`Finding random move from tile ${from_index}`);
+      this.log(`Finding random move from tile ${from_index}`);
       if (
         // we need to own it to move from here,
         (this.terrain[from_index] === this.playerIndex) &&
@@ -655,8 +770,8 @@ module.exports = class Bot {
         this.armies[from_index] > 1
       ){
         let options = this.getSurroundingTilesSimple(from_index);
-        console.log('options are', options);
-        console.log('option terrain is', this.getSurroundingTerrainSimple(from_index));
+        this.log('options are', options);
+        this.log('option terrain is', this.getSurroundingTerrainSimple(from_index));
         for (let i = 0; i < priority.length; i++){
 
           // map the options to array indicating
@@ -664,7 +779,7 @@ module.exports = class Bot {
           // while preserving the index of the option
           let can_use = options.map(op => priority[i](op) && (!this.isCity(op) || this.game_tick >= this.ATTACK_CITIES_MIN));
           if (LOG_RANDOM_MOVE){
-            console.log(`can_use of ${priority[i].name}`, can_use);
+            this.log(`can_use of ${priority[i].name}`, can_use);
           }
 
           // let's not enter the loop below if there are no usable options
@@ -675,7 +790,7 @@ module.exports = class Bot {
             can_use.filter(op => Boolean(op)).length <= 0
           ) {
             if (LOG_RANDOM_MOVE){
-              console.log('no usable option');
+              this.log('no usable option');
             }
             continue;
           }
@@ -686,13 +801,13 @@ module.exports = class Bot {
           let usable_attempt = 0;
           while (!found_option_index) {
             if (LOG_RANDOM_MOVE){
-              console.log(`Random usable move, attempt #${++usable_attempt}`);
+              this.log(`Random usable move, attempt #${++usable_attempt}`);
             }
 
             // get random option index
             let index = Math.floor(Math.random() * options.length);
             if (LOG_RANDOM_MOVE){
-              console.log(`checking ${can_use[index]} at index: ${index}`);
+              this.log(`checking ${can_use[index]} at index: ${index}`);
             }
 
             // check if the option at that index is usable
@@ -708,7 +823,7 @@ module.exports = class Bot {
                   'down',
                   'left',
                 ];
-                console.log(`moving ${MOVE_MAP[option_index]} to ${options[option_index]}`);
+                this.log(`moving ${MOVE_MAP[option_index]} to ${options[option_index]}`);
               }
             }
           }
@@ -717,13 +832,13 @@ module.exports = class Bot {
           const optionsToMovesMap = [ this.up, this.right, this.down, this.left ];
           let next_move = optionsToMovesMap[option_index];
           if (LOG_RANDOM_MOVE){
-            console.log('next move', next_move);
+            this.log('next move', next_move);
           }
           found_move = true;
 
           // get type of index we are taking
           let taking_type = this.terrain[options[option_index]];
-          console.log({ taking_type, last_type_taken: this.last_type_taken });
+          this.log({ taking_type, last_type_taken: this.last_type_taken });
           // set last type taken
           this.last_type_taken = taking_type;
 
@@ -732,11 +847,13 @@ module.exports = class Bot {
             taking_type !== this.playerIndex &&
             this.armies[from_index] <= 2
           ){
-            console.log(`Targeting player ${this.usernames[taking_type]}`);
+            this.log(`Targeting player ${this.usernames[taking_type]}`);
+            let newObj = new Objective(POSITION_OBJECTIVE, options[option_index], null, true);
+            newObj.tick_created = this.internal_tick;
             if (this.armiesAtTile(this.general_tile) > this.LOWEST_GENERALS){
-              this.objective_queue.unshift(new Objective(POSITION_OBJECTIVE, options[option_index], null, true));
+              this.objective_queue.unshift(newObj);
             } else {
-              this.objective_queue.push(new Objective(POSITION_OBJECTIVE, options[option_index], null, true));
+              this.objective_queue.push(newObj);
             }
           }
 
@@ -751,15 +868,15 @@ module.exports = class Bot {
       } else {
         if (!(this.terrain[from_index] === this.playerIndex)){
           if (LOG_RANDOM_MOVE){
-            console.log('given starting tile not owned');
+            this.log('given starting tile not owned');
           }
         } else {
           if (LOG_RANDOM_MOVE){
-            console.log('not enough armies on given tile');
+            this.log('not enough armies on given tile');
           }
         }
         if (LOG_RANDOM_MOVE){
-          console.log('setting current tile to null');
+          this.log('setting current tile to null');
         }
 
         this.current_tile = null;
@@ -779,7 +896,7 @@ module.exports = class Bot {
 
   // Moving to surrounding tiles
   attack = (from, to) => {
-    console.log(`attacking ${to}, from ${from}`);
+    this.log(`attacking ${to}, from ${from}`);
     this.socket.emit("attack", from, to);
     this.history = [...this.history, to];
     this.current_tile = to;
@@ -800,8 +917,14 @@ module.exports = class Bot {
 
   // check if file is frontline tile
   isFrontline = (tile) => {
-    return this.getSurroundingTerrainSimple(tile)
-        .some(inner_tile => this.isEnemy(inner_tile));
+    let surrounding = this.getSurroundingTilesSimple(tile);
+    let foundEnemy = false;
+    surrounding.forEach(t => {
+      if (this.isEnemy(t)){
+        foundEnemy = true;
+      }
+    })
+    return foundEnemy;
   }
 
   // check if tile is a perimeter tile
@@ -812,29 +935,51 @@ module.exports = class Bot {
       let surrounding = this.getSurroundingTilesSimple(tile);
       // filter out all tiles that would not make it a perimeter tile
       // this will filter out vertical warps too
-      let venture_tiles = surrounding.map(tile => this.isVentureTile(tile));
+      let surrounding_mapped = surrounding.map(tile => this.isVentureTile(tile));
 
       // if tile is on right edge
       if (tile + 1 % (this.width) === 0){
         // set right tile to false
-        venture_tiles[1] = false;
+        surrounding_mapped[1] = false;
       }
 
       // if tile is on left edge
       if (tile === 0 || tile % this.width === 0){
         // set left tile to false
-        venture_tiles[3] = false;
+        surrounding_mapped[3] = false;
       }
 
-      venture_tiles = venture_tiles.filter(tile => Boolean(tile));
-      let tiles = surrounding.filter((tile, idx) => {
-        return venture_tiles[idx];
-      })
+      let venture_tiles = [];
+      for (let i = 0; i < surrounding.length; i++){
+        if (surrounding_mapped[i]){
+          venture_tiles.push(surrounding[i]);
+        }
+      }
 
-      console.log(`venture tiles for ${tile}: ${tiles}`);
-      console.log(`is ${tile} perimter? ${venture_tiles.length > 0}`);
+      // this.log(`venture tiles for ${tile}: ${venture_tiles}`);
+      // this.log(`is ${tile} perimter? ${venture_tiles.length > 0}`);
       return venture_tiles.length > 0;
     }
+    return false;
+  }
+
+  willMoveCrossHorizontalBorder = (from, to) => {
+    // if tile is on right edge and next move is left
+    if (
+      from + 1 % (this.width) === 0 &&
+      this.getLeft(from) === to
+    ){
+      return true;
+    }
+
+    // if tile is on left edge and next move is right
+    if (
+      from % this.width === 0 &&
+      this.getRight(from) === to
+    ){
+      return true;
+    }
+
     return false;
   }
 
@@ -877,7 +1022,7 @@ module.exports = class Bot {
     let isEnemyClose = this.enemies
       .map(tile => this.distanceBetweenTiles(this.general_tile, tile))
       .some(distance => distance >= this.CLOSENESS_LIMIT);
-    console.log('REINFORCE GENERAL, ENEMY IS TOO CLOSE');
+    this.log('REINFORCE GENERAL, ENEMY IS TOO CLOSE');
     return isEnemyClose;
   }
 
@@ -908,19 +1053,16 @@ module.exports = class Bot {
     let most_armies = 0;
     let best_tile = null;
     if (LOG_BEST_SOURCE){
-      console.log('finding best source, looping through all owned: ', this.owned);
+      this.log('finding best source, looping through all owned: ', this.owned);
     }
     this.owned.forEach((tile) => {
-      if (LOG_BEST_SOURCE){
-        console.log('checking tile: ', tile);
-      }
       let armies_at_tile = this.armies[tile];
       if (
         (best_tile === null || armies_at_tile > most_armies) &&
         (includeGeneral || !this.isGeneral(tile))
       ){
         if (LOG_BEST_SOURCE){
-          console.log(`found better tile than ${best_tile}, ${tile}`);
+          this.log(`found better tile than ${best_tile}: ${tile} with ${armies_at_tile} armies`);
         }
         best_tile = tile;
         most_armies = armies_at_tile;
@@ -931,18 +1073,18 @@ module.exports = class Bot {
       if (desperate_fallback){
         best_tile = this.getRandomOwned();
         if (LOG_BEST_SOURCE){
-          console.log(`No good source, returning random owned tile`);
+          this.log(`No good source, returning random owned tile`);
         }
       } else {
         best_tile = this.getBestPerimeter(includeGeneral, true);
         if (LOG_BEST_SOURCE){
-          console.log(`No good source, returning random perimeter tile`);
+          this.log(`No good source, returning random perimeter tile`);
         }
       }
     }
 
     if (LOG_BEST_SOURCE){
-      console.log(`returning best tile ${best_tile} with ${this.armies[best_tile]} armies`);
+      this.log(`returning best tile ${best_tile} with ${this.armies[best_tile]} armies`);
     }
     return best_tile;
   }
@@ -954,25 +1096,25 @@ module.exports = class Bot {
     if (this.frontline.length > 0){
       let most_armies = 1;
       let best_tile = null;
-      console.log('finding best frontline, looping through all frontline: ', this.frontline);
+      this.log('finding best frontline, looping through all frontline: ', this.frontline);
       this.frontline.forEach(tile => {
         let armies_at_tile = this.armiesAtTile(tile);
-        console.log(`armies at frontline ${tile}, ${armies_at_tile}`);
+        this.log(`armies at frontline ${tile}, ${armies_at_tile}`);
         if (best_tile === null || armies_at_tile > most_armies){
-          console.log(`found better tile frontline tile than ${best_tile}, ${tile}`);
+          this.log(`found better tile frontline tile than ${best_tile}, ${tile}`);
           best_tile = tile;
           most_armies = armies_at_tile;
         }
       })
 
-      if (best_tile === null){
-        console.log('no front line with sufficient armies, getting best perimeter');
+      if (best_tile === null || this.armies[best_tile] <= 1){
+        this.log('no frontline with sufficient armies, getting best perimeter');
         best_tile = this.getBestPerimeter(includeGeneral);
       }
 
       return best_tile;
     } else {
-      console.log('no frontline, getting best perimeter');
+      this.log('no frontline, getting best perimeter');
       return this.getBestPerimeter(includeGeneral, false, true);
     }
   }
@@ -987,28 +1129,50 @@ module.exports = class Bot {
   }
 
   getClosestPerimeter = (start) => {
-    console.log("Getting closest perimeter");
+    this.log("Getting closest perimeter");
     if (this.perimeter.length <= 0){
-      console.log('no perimeters, getting random owned');
+      this.log('no perimeters, getting random owned');
       return this.getRandomOwned();
     }
     let distances = this.perimeter.map(tile => this.distanceBetweenTiles(start, tile));
-    console.log('perimeters', this.perimeter);
-    console.log(`distances from ${start}`, distances);
+    this.log('perimeters', this.perimeter);
     let shortest = this.width * this.height;
     let index = null;
     distances.forEach((distance, idx) => {
       if (distance < shortest || index === null){
         index = idx;
         shortest = distance;
-        console.log(`current closest perimeter to ${start}: ${this.perimeter[index]} at ${shortest} distance`);
+        this.log(`current closest perimeter to ${start}: ${this.perimeter[index]} at ${shortest} distance`);
       }
     })
     if (index === null){
-      console.log(`Couldn't find shortest, returning random owned`);
+      this.log(`Couldn't find shortest, returning random owned`);
       return this.getRandomOwned();
     }
     return this.perimeter[index];
+  }
+
+  getClosestFrontline = (start) => {
+    this.log("Getting closest frontline");
+    if (this.frontline.length <= 0){
+      this.log('no front line, get closest perimeter');
+      return this.getClosestPerimeter(start);
+    }
+    let distances = this.frontline.map(tile => this.distanceBetweenTiles(start, tile));
+    let shortest = this.width * this.height;
+    let index = null;
+    distances.forEach((distance, idx) => {
+      if (distance < shortest || index === null){
+        index = idx;
+        shortest = distance;
+        this.log(`current closest frontline to ${start}: ${this.perimeter[index]} at ${shortest} distance`);
+      }
+    })
+    if (index === null){
+      this.log ("Couldn't find shortest, returning random owned");
+      return this.getRandomOwned();
+    }
+    return this.frontline[index];
   }
 
   // fallback to best source
@@ -1019,22 +1183,22 @@ module.exports = class Bot {
       let most_armies = 1;
       let best_tile = null;
       if (LOG_BEST_PERIMETER){
-        console.log('finding best perimeter, looping through all perimeter: ', this.perimeter);
+        this.log('finding best perimeter, looping through all perimeter: ', this.perimeter);
       }
       this.perimeter.forEach((tile) => {
         let armies_at_tile = this.armies[tile];
         if (LOG_BEST_PERIMETER){
-          console.log(`armies at perimeter ${tile}, ${armies_at_tile}`);
+          this.log(`armies at perimeter ${tile}, ${armies_at_tile}`);
         }
         if (
           (best_tile === null || armies_at_tile > most_armies) &&
           (includeGeneral || !this.isGeneral(tile))
         ){
           if (LOG_BEST_PERIMETER){
-            console.log(`found better tile than ${best_tile}, ${tile}`);
+            this.log(`found better tile than ${best_tile}, ${tile}`);
           }
           if (this.isGeneral(tile)){
-            console.log(`best tile ${tile} is general`);
+            this.log(`best tile ${tile} is general`);
           }
           best_tile = tile;
           most_armies = armies_at_tile;
@@ -1049,10 +1213,10 @@ module.exports = class Bot {
 
       if (best_tile === null || this.armiesAtTile(best_tile) <= 1){
         if (desperate_fallback){
-          console.log('no tile on perimeter with sufficient armies, returning random owned tile');
+          this.log('no tile on perimeter with sufficient armies, returning random owned tile');
           best_tile = this.getRandomOwned();
         } else {
-          console.log('no tile on perimeter with sufficient armies, finding best inland source');
+          this.log('no tile on perimeter with sufficient armies, finding best inland source');
           best_tile = this.getBestSourceTile(includeGeneral, true);
         }
       }
@@ -1064,10 +1228,10 @@ module.exports = class Bot {
       }
 
       if (desperate_fallback){
-        console.log('no perimeter, returning random owned tile');
+        this.log('no perimeter, returning random owned tile');
         return this.getRandomOwned();
       } else {
-        console.log('no permiter, getting best source tile');
+        this.log('no permiter, getting best source tile');
         return this.getBestSourceTile(includeGeneral);
       }
     }
@@ -1120,21 +1284,21 @@ module.exports = class Bot {
       if (newLimit){
         this.PATH_LENGTH_LIMIT = p.length;
       }
-      console.log(`found new path ${JSON.stringify(p)}`);
+      this.log(`found new path ${JSON.stringify(p)}`);
       paths = [...paths, p];
     }
     this.addPathDepthFirstStep(start, finish, path, visited, addPathDepthFirst);
-    console.log(`found ${paths.length} paths`);
+    this.log(`found ${paths.length} paths`);
     let lengths = paths.map(path => path.length);
-    console.log(`lengths ${JSON.stringify(lengths)}`);
+    this.log(`lengths ${JSON.stringify(lengths)}`);
     let shortest_length = Math.min(...lengths);
-    console.log(`shortest_length = ${shortest_length}`);
+    this.log(`shortest_length = ${shortest_length}`);
     let index_of_shortest = lengths.indexOf(shortest_length);
-    console.log(`index_of_shortest = ${index_of_shortest}`);
+    this.log(`index_of_shortest = ${index_of_shortest}`);
     let shortest_path = paths[index_of_shortest];
-    console.log(`shortest_path = ${JSON.stringify(shortest_path)}`);
+    this.log(`shortest_path = ${JSON.stringify(shortest_path)}`);
     let path_terrains = shortest_path?.map(tile => this.terrain[tile]);
-    console.log(`shortest_path terrains ${path_terrains}`);
+    this.log(`shortest_path terrains ${path_terrains}`);
 
     this.PATH_LENGTH_LIMIT = this.DEFAULT_PATH_LENGTH_LIMIT;
     return shortest_path ?? [];
@@ -1142,10 +1306,11 @@ module.exports = class Bot {
 
   addPathDepthFirstStep = (next, finish, path, visited, addPathDepthFirst) => {
     const LOG_ADD_PATH_STEP = false;
+    const last_move = path[path.length - 1];
 
     if (path.length > this.PATH_LENGTH_LIMIT && this.PATH_LENGTH_LIMIT !== null){
       if (LOG_ADD_PATH_STEP){
-        console.log('Stopped searching path due to length limit');
+        this.log('Stopped searching path due to length limit');
       }
       return;
     }
@@ -1167,22 +1332,25 @@ module.exports = class Bot {
     // check visited
     if (visited.includes(next)){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`already visited ${next}, (${x},${y})`);
+        this.log(`already visited ${next}, (${x},${y})`);
       }
       return;
     }
 
     // check bounds
-    if (x < 0 || x > this.width || y < 0 || y > this.height){
+    if (
+      (x < 0 || x > this.width || y < 0 || y > this.height) ||
+      (last_move !== undefined && this.willMoveCrossHorizontalBorder(last_move, next))
+    ) {
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} tile out of bounds (${x} < 0 || ${x} > ${this.width} || ${y} < 0 || ${y} > ${this.height})`);
+        this.log(`${next} tile out of bounds (${x} < 0 || ${x} > ${this.width} || ${y} < 0 || ${y} > ${this.height})`);
       }
       return;
     }
 
     if (this.terrain[next] === TILE_MOUNTAIN){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} is ${this.terrain[next]}`);
+        this.log(`${next} is ${this.terrain[next]}`);
       }
       return;
     }
@@ -1195,7 +1363,7 @@ module.exports = class Bot {
       (this.isCity(next) && !this.isCity(finish)) // don't include cities in path, unless a city is the target
     ){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} non traversable terrain ${this.terrain[next]}`);
+        this.log(`${next} non traversable terrain ${this.terrain[next]}`);
       }
       return;
     }
@@ -1228,7 +1396,7 @@ module.exports = class Bot {
     // check visited
     if (visited.includes(next)){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`already visited ${next}, (${x},${y})`);
+        this.log(`already visited ${next}, (${x},${y})`);
       }
       return;
     }
@@ -1236,14 +1404,14 @@ module.exports = class Bot {
     // check bounds
     if (x < 0 || x > this.width || y < 0 || y > this.height){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} tile out of bounds (${x} < 0 || ${x} > ${this.width} || ${y} < 0 || ${y} > ${this.height})`);
+        this.log(`${next} tile out of bounds (${x} < 0 || ${x} > ${this.width} || ${y} < 0 || ${y} > ${this.height})`);
       }
       return;
     }
 
     if (this.terrain[next] === TILE_MOUNTAIN){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} is ${this.terrain[next]}`);
+        this.log(`${next} is ${this.terrain[next]}`);
       }
       return;
     }
@@ -1256,7 +1424,7 @@ module.exports = class Bot {
       (this.isCity(next) && !this.isCity(finish)) // don't include cities in path, unless a city is the target
     ){
       if (LOG_ADD_PATH_STEP) {
-        console.log(`${next} non traversable terrain ${this.terrain[next]}`);
+        this.log(`${next} non traversable terrain ${this.terrain[next]}`);
       }
       return;
     }

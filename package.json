@@ -4,14 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node server",
-    "watch": "run-script-os",
-    "watch:macos": "nodemon server > logs/$(date +%Y%m%d-%H%M%S).txt",
-    "watch:windows": "nodemon server > logs/%date:~10,4%%date:~7,2%%date:~4,2%_%time:~0,2%%time:~3,2%.txt",
-    "watch:default": "nodemon server",
+    "start": "set LOG=FALSE && node server",
+    "watch": "set LOG=TRUE && nodemon server",
     "build": "cd client/ && yarn install && yarn build",
     "test": "cd ./server && node index.js 5500",
-    "delog": "rm -rf ./logs/*",
     "refresh": "yarn install & cd ./server && rm -rf ./node_modules && yarn install & cd ./client && rm -rf ./node_modules && yarn install"
   },
   "repository": {

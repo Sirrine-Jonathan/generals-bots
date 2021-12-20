@@ -32,7 +32,7 @@ module.exports = class Bot {
   */
 
   // The latest game tick that the bot will pull armies off it's general tile
-  PULL_FROM_GENERAL_MAX = 50;
+  PULL_FROM_GENERAL_MAX = 500;
 
   // The earliest game tick that the bot will start to attack cities
   ATTACK_CITIES_MIN = 100;
@@ -296,7 +296,6 @@ module.exports = class Bot {
     }
     if (this.no_change_count >= this.no_change_threshold){
       this.log(`recognized no change for ${this.no_change_count} consecutive ticks at tick ${this.game_tick}`);
-      this.chat("I think I may be stuck...")
       this.objective_queue = [];
       this.no_change_count = 0;
       this.clear();
@@ -388,7 +387,7 @@ module.exports = class Bot {
       ){
 
         // find the closest city
-        let closest = this.getClosest(this.current_tile ?? this.getBestSourceTile(), unowned_cities);
+        let closest = this.getClosest(this.current_tile ?? this.getBestSourceTile(false), unowned_cities);
         this.log({ closest });
 
         let newObj = new Objective(CITY_OBJECTIVE, closest)
@@ -579,6 +578,7 @@ module.exports = class Bot {
   // if the queue needs to be continued from a better source.
   executeObjectiveStep = (objective) => {
     this.log('[PUSH EXECUTEOBJECTIVESTEP]');
+    // this.chat(`Moving towards tile ${objective.target}`)
     const LOG_OBJECTIVE_STEP = true;
     if (LOG_OBJECTIVE_STEP){
       this.log('Running next step on objective', objective);
@@ -736,11 +736,14 @@ module.exports = class Bot {
     // start trying to determine the next move
     let found_move = false;
     let set_queue_abandon_loop = false;
+    let attempt = 0;
     while(!found_move && !set_queue_abandon_loop){
       let from_index = null;
+      this.log(`Attempt #${++attempt}`);
 
       // just use best frontline all the time
       from_index = this.getBestFrontline(this.game_tick < this.PULL_FROM_GENERAL_MAX, false);
+      this.log(`from_index ${from_index}`);
 
       /*
         If from_index is not frontline but is permieter, and there are frontline tiles,
@@ -752,6 +755,7 @@ module.exports = class Bot {
         this.isPerimeter(from_index) &&
         this.frontline > 0
       ){
+        this.log(`is not frontline, is perimeter`);
 
         // schedule objective to go towards perimeter
         let best_source = this.getBestSourceTile(this.game_tick < this.PULL_FROM_GENERAL_MAX);
@@ -788,6 +792,7 @@ module.exports = class Bot {
         this.perimeter.length > 0 &&
         this.game_tick > 1
       ){
+        this.log(`is not frontline, is not perimeter`);
 
         // schedule objective to go towards perimeter
         let best_source = this.getBestSourceTile(this.game_tick < this.PULL_FROM_GENERAL_MAX);
@@ -814,12 +819,14 @@ module.exports = class Bot {
       }
 
       // at this point from_index should be a frontline tile
+      this.log(`from_index should be frontline ${this.isFrontline(from_index)}`);
       if (
         // we need to own it to move from here,
         (this.terrain[from_index] === this.playerIndex) &&
         // and it needs armies
         this.armies[from_index] > 1
       ){
+        this.log('from_index is owned and has armies');
         let options = this.getSurroundingTilesSimple(from_index);
         for (let i = 0; i < priority.length; i++){
 
@@ -837,10 +844,14 @@ module.exports = class Bot {
             continue;
           }
 
+          this.log('found usable options');
+
           // get a random usable option from the options list
           let option_index;
           let found_option_index = false;
+          let inner_attempt = 0;
           while (!found_option_index) {
+            this.log(`Attempt #${attempt}:${++inner_attempt}`);
             let index = null;
 
             // if the options are enemy tiles, let's select the one with the least armies
@@ -848,17 +859,46 @@ module.exports = class Bot {
               let lowest_armies = null;
               let lowest_armies_index = null;
               options.forEach((each, idx) => {
-                if (lowest_armies === null || this.armiesAtTile(each) < lowest_armies){
+                if (
+                  can_use[idx] &&
+                  (lowest_armies === null || this.armiesAtTile(each) < lowest_armies)
+                ){
                   lowest_armies = this.armiesAtTile(each);
                   lowest_armies_index = idx;
                 }
               })
               index = lowest_armies_index;
+              if (index !== null){
+                this.log(`from ${from_index}, planning to attack weakest army at option ${index}`)
+                this.log(`It's tile ${options[index]} and can_use is ${can_use[index]}`);
+              }
             }
 
-            // as a backkup, we'll get a random option index
+            // if the options are empty tiles, let's select the one closest to the center tile
+            if (this.isEmpty(options[0])){
+              let closest = null;
+              let closest_index = null;
+              let center = Math.floor(this.size / 2);
+              options.forEach((each, idx) => {
+                if (
+                  can_use[idx] &&
+                  (closest === null || this.distanceBetweenTiles(each, center) < closest)
+                ){
+                  closest = this.distanceBetweenTiles(each, center);
+                  closest_index = idx;
+                }
+              })
+              index = closest_index
+              if (index !== null){
+                this.log(`from ${from_index}, planning to attack empty tile closest to center at option ${index}`);
+                this.log(`It's tile ${options[index]} and can_use is ${can_use[index]}`);
+              }
+            }
+
+            // as a backup, we'll get a random option index
             if (index === null) {
               index = Math.floor(Math.random() * options.length);
+              this.log(`planning to attack random tile: ${index}`)
             }
 
             // double check if the option at that index is usable
@@ -887,6 +927,7 @@ module.exports = class Bot {
           // get type of index we are taking
           let taking_type = this.terrain[options[option_index]];
           this.log({ taking_type, last_type_taken: this.last_type_taken });
+
           // set last type taken
           this.last_type_taken = taking_type;
 

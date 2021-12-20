@@ -4,14 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "run-script-os",
-    "watch": "run-script-os",
-    "start:windows": "set LOG=FALSE && node server",
-    "watch:windows": "set LOG=TRUE && nodemon server",
-    "start:macos": "export LOG=FALSE && node server",
-    "watch:macos": "export LOG=TRUE && nodemon server",
-    "start:default": "export LOG=FALSE && node server",
-    "watch:default": "export LOG=TRUE && nodemon server",
+    "dev": "set LOG=TRUE && nodemon server",
+    "start": "export LOG=FALSE && node server",
+    "watch": "export LOG=TRUE && nodemon server",
     "build": "cd client/ && yarn install && yarn build",
     "test": "cd ./server && node index.js 5500",
     "refresh": "yarn install & cd ./server && rm -rf ./node_modules && yarn install & cd ./client && rm -rf ./node_modules && yarn install"

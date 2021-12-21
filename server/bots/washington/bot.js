@@ -306,7 +306,7 @@ module.exports = class Bot {
       this.log(`recognized no change for ${this.no_change_count} consecutive ticks at tick ${this.game_tick}`);
       this.objective_queue = [];
       this.no_change_count = 0;
-      this.clear();
+      // this.clear();
     }
     this.checksum = newChecksum;
 
@@ -330,18 +330,10 @@ module.exports = class Bot {
 
     // check if there was a failed attack we need to attempt again
     if (this.lastAttemptedMove !== null){
-      this.log({
-        lastMove: this.lastAttemptedMove
-      })
-      this.log('how it compares with')
       const lastAttemptedMoveCheck = this.recordMove(this.lastAttemptedMove.from, this.lastAttemptedMove.to);
-      this.log({
-        lastMoveCheck: lastAttemptedMoveCheck
-      })
-      this.log({
-        areEqual: JSON.stringify(this.lastAttemptedMove) === JSON.stringify(lastAttemptedMoveCheck)
-      })
-      if (JSON.stringify(this.lastAttemptedMove) === JSON.stringify(this.lastAttemptedMoveCheck)){
+      const lastMoveFailed = JSON.stringify(this.lastAttemptedMove) === JSON.stringify(lastAttemptedMoveCheck);
+      this.log(`Last move failed: ${lastMoveFailed}`);
+      if (lastMoveFailed){
         this.log('FOUND FAILED MOVE, reattempting')
         this.attack(this.lastAttemptedMove.from, this.lastAttemptedMove.to);
         return;

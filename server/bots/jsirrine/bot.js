@@ -32,7 +32,7 @@ module.exports = class Bot {
   */
 
   // The latest game tick that the bot will pull armies off it's general tile
-  PULL_FROM_GENERAL_MAX = 500;
+  PULL_FROM_GENERAL_MAX = 50;
 
   // The earliest game tick that the bot will start to attack cities
   ATTACK_CITIES_MIN = 100;
@@ -59,7 +59,7 @@ module.exports = class Bot {
   REINFORCE_GENERAL = true;
 
   // reinforce to keep up with game tick, unless min is acheived
-  GENERAL_MIN = 500;
+  GENERAL_MIN = 700;
 
   // The most we'll look into a path before considering it too long to continue searching
   DEFAULT_PATH_LENGTH_LIMIT = 20;
@@ -330,18 +330,10 @@ module.exports = class Bot {
 
     // check if there was a failed attack we need to attempt again
     if (this.lastAttemptedMove !== null){
-      this.log({
-        lastMove: this.lastAttemptedMove
-      })
-      this.log('how it compares with')
       const lastAttemptedMoveCheck = this.recordMove(this.lastAttemptedMove.from, this.lastAttemptedMove.to);
-      this.log({
-        lastMoveCheck: lastAttemptedMoveCheck
-      })
-      this.log({
-        areEqual: JSON.stringify(this.lastAttemptedMove) === JSON.stringify(lastAttemptedMoveCheck)
-      })
-      if (JSON.stringify(this.lastAttemptedMove) === JSON.stringify(this.lastAttemptedMoveCheck)){
+      const lastMoveFailed = JSON.stringify(this.lastAttemptedMove) === JSON.stringify(lastAttemptedMoveCheck);
+      this.log(`Last move failed: ${lastMoveFailed}`);
+      if (lastMoveFailed){
         this.log('FOUND FAILED MOVE, reattempting')
         this.attack(this.lastAttemptedMove.from, this.lastAttemptedMove.to);
         return;
@@ -371,7 +363,7 @@ module.exports = class Bot {
         // find the closest general
         let closest = this.getClosest(
           this.current_tile ??
-          this.getBestSourceTile() ??
+          this.getBestSourceTile(true) ??
           this.getRandomOwned(),
           generals
         );
@@ -539,7 +531,7 @@ module.exports = class Bot {
     const reinforcementAlreadyQueued = this.objective_queue.some(obj => obj.type === REINFORCE_OBJECTIVE);
     const settingsAllowReinforcement = this.REINFORCE_GENERAL && this.USE_OBJECTIVES;
     const armiesBelowThreshold = this.armiesAtTile(this.general_tile) < this.game_tick;
-    const armiesMinAcheived = this.armiesAtTile(this.general_tile) > this.GENERAL_MIN
+    const armiesMinAcheived = this.armiesAtTile(this.general_tile) > this.GENERAL_MIN;
     const stoppedPullingFromGeneral = this.game_tick >= this.PULL_FROM_GENERAL_MAX;
     if (
       settingsAllowReinforcement &&
@@ -558,7 +550,11 @@ module.exports = class Bot {
       this.log('Reinforcing general');
       let newObj = new Objective(REINFORCE_OBJECTIVE, this.general_tile); // asdf
       newObj.tick_created = this.internal_tick;
-      this.addObjective(newObj);
+      if (this.closeEnemyIsStronger()){
+        this.addObjective(newObj, true);
+      } else {
+        this.addObjective(newObj);
+      }
     }
 
     // if there's no objective, let's resort to doing a random move,
@@ -858,10 +854,13 @@ module.exports = class Bot {
 
           // If we are taking a player tile and we are about to run out of armies to attack,
           // let's plan on reinforcing this frontline
+          const armiesBelowThreshold = this.armiesAtTile(this.general_tile) < this.game_tick;
+          const armiesMinAcheived = this.armiesAtTile(this.general_tile) > this.GENERAL_MIN;
           if (
+            this.ATTACK_ENEMIES && this.USE_OBJECTIVES &&
             this.isEnemy(taking_type) &&
-            this.armies[from_index] <= 2 &&
-            this.ATTACK_ENEMIES && this.USE_OBJECTIVES
+            this.armies[from_index] <= 2 && // don't start the enemy target objective until we're almost out on the frontline
+            (!armiesBelowThreshold || armiesMinAcheived)
           ){
             this.log(`Targeting player ${this.usernames[taking_type]}`);
             let newObj = new Objective(POSITION_OBJECTIVE, options[to_index], null, true);
